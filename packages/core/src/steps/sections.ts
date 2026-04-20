@@ -68,24 +68,31 @@ async function writeSection(
   let res = await callLLM();
   let markdown = res.object.markdown.trim();
 
-  const suspect = isSuspect(markdown, res.finishReason);
-  if (suspect) {
+  if (isSuspect(markdown, res.finishReason)) {
     log(
       emit,
       'warn',
-      `section "${outline.id}" returned ${markdown.length} chars with finishReason=${res.finishReason}; retrying once.`,
+      `section "${outline.id}" returned ${markdown.length} chars (finishReason=${res.finishReason}); retrying once.`,
     );
-    const retry = await callLLM();
-    const retryMd = retry.object.markdown.trim();
-    if (retryMd.length > markdown.length || (res.finishReason !== 'stop' && retry.finishReason === 'stop')) {
-      res = retry;
-      markdown = retryMd;
+    try {
+      const retry = await callLLM();
+      const retryMd = retry.object.markdown.trim();
+      if (retryMd.length > markdown.length) {
+        res = retry;
+        markdown = retryMd;
+      }
+    } catch (err) {
+      log(
+        emit,
+        'warn',
+        `section "${outline.id}" retry failed (${err instanceof Error ? err.message : String(err)}); keeping first attempt.`,
+      );
     }
     if (isSuspect(markdown, res.finishReason)) {
       log(
         emit,
         'warn',
-        `section "${outline.id}" still suspect after retry (${markdown.length} chars, finishReason=${res.finishReason}); keeping partial output.`,
+        `section "${outline.id}" still short after retry (${markdown.length} chars); keeping partial output.`,
       );
     }
   }
@@ -117,9 +124,13 @@ async function writeSection(
   }
 }
 
+// Only two signals mean the body is probably broken:
+// - the provider hit maxTokens (finishReason === 'length'), or
+// - the markdown is implausibly short for a 300+ 字 target.
+// finishReason === 'tool-calls' is the normal completion signal for
+// Vercel AI SDK generateObject (which uses a tool call to return JSON).
 function isSuspect(markdown: string, finishReason: string): boolean {
   if (finishReason === 'length') return true;
-  if (finishReason !== 'stop') return true;
   if (markdown.length < MIN_SECTION_CHARS) return true;
   return false;
 }
