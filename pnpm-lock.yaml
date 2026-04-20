@@ -60,6 +60,12 @@ importers:
         specifier: ^1.56.2
         version: 1.59.1
 
+  packages/publish-file:
+    dependencies:
+      '@topic2md/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/shared:
     dependencies:
       zod:
