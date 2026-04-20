@@ -1,5 +1,5 @@
 import type { Source } from './source.js';
-import type { ImageRef } from './image.js';
+import type { ImageCandidate, ImageRef } from './image.js';
 import type { Article, Frontmatter } from './article.js';
 import type { SectionOutline } from './section.js';
 
@@ -39,7 +39,19 @@ export interface ImageOptions {
 }
 
 export interface ImagePlugin extends BasePlugin {
-  capture(request: ImageRequest, opts?: ImageOptions): Promise<ImageRef | null>;
+  /**
+   * Return a pool of candidate images. Core merges candidates from every
+   * plugin and runs a vision-based reranker to pick at most one per section.
+   * Prefer this over `capture` — it gives the reranker material to choose
+   * from instead of locking in a single shot per plugin.
+   */
+  discover?(request: ImageRequest, opts?: ImageOptions): Promise<ImageCandidate[]>;
+  /**
+   * Legacy single-shot API. Kept so plugins that don't have a meaningful
+   * candidate pool (e.g. Unsplash) still work. Core falls back to this when
+   * `discover` is not defined.
+   */
+  capture?(request: ImageRequest, opts?: ImageOptions): Promise<ImageRef | null>;
 }
 
 export interface ThemeContext {

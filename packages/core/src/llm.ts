@@ -13,6 +13,12 @@ export interface GenerateObjectOptions<T extends z.ZodType> {
   model?: string;
   signal?: AbortSignal;
   maxTokens?: number;
+  /**
+   * Image URLs to include as multi-modal input alongside `prompt`. Each entry
+   * becomes a content part in a user message. Only honoured by vision-capable
+   * models — passing images to a text-only model yields a provider error.
+   */
+  images?: { url: string }[];
 }
 
 export interface GenerateTextOptions {
@@ -124,7 +130,7 @@ export function createLLM(opts: LLMOptions = {}): LLM {
 
   return {
     defaultModel,
-    async generate({ schema, prompt, system, model, signal, maxTokens }) {
+    async generate({ schema, prompt, system, model, signal, maxTokens, images }) {
       const primary = model ?? defaultModel;
       const id = nanoid(10);
       const started = Date.now();
@@ -134,8 +140,6 @@ export function createLLM(opts: LLMOptions = {}): LLM {
           generateObject({
             model: openrouter(modelId),
             schema,
-            system,
-            prompt,
             abortSignal: signal,
             maxTokens,
             // OpenRouter-routed providers (MiniMax, GLM, …) have been
@@ -143,6 +147,23 @@ export function createLLM(opts: LLMOptions = {}): LLM {
             // time. JSON mode (response_format=json_object) has been
             // dramatically more reliable in practice.
             mode: 'json',
+            ...(images && images.length > 0
+              ? {
+                  messages: [
+                    {
+                      role: 'user' as const,
+                      content: [
+                        { type: 'text' as const, text: prompt },
+                        ...images.map((img) => ({
+                          type: 'image' as const,
+                          image: img.url,
+                        })),
+                      ],
+                    },
+                  ],
+                  ...(system ? { system } : {}),
+                }
+              : { prompt, ...(system ? { system } : {}) }),
           }),
         );
         const usage = normalizeUsage(res.usage);

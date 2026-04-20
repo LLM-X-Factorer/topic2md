@@ -26,7 +26,12 @@ import {
   type DatabaseType,
 } from './persistence.js';
 import { assertPluginConfig, imagePlugins, primaryPublish, themePlugins } from './registry.js';
-import { assignSources, reorderWithAssigned, resolveImages } from './steps/images.js';
+import {
+  assignSources,
+  reorderWithAssigned,
+  resolveRerankModel,
+  resolveSectionImage,
+} from './steps/images.js';
 import { writeSection } from './steps/sections.js';
 
 export interface RegenSectionInput {
@@ -136,6 +141,7 @@ export async function regenSection(
       sectionsOutput,
       images,
       options.plugins,
+      llm,
       emit,
       options.signal,
     );
@@ -216,6 +222,7 @@ async function rerunImages(
   sections: SectionsOutput,
   previous: ImagesOutput,
   plugins: PluginConfig,
+  llm: LLM,
   emit: EmitFn,
   signal: AbortSignal | undefined,
 ): Promise<ImagesOutput> {
@@ -225,13 +232,16 @@ async function rerunImages(
   }
 
   const assignments = assignSources(sections.sections, sections.sources);
+  const rerankModel = resolveRerankModel();
   const next = await Promise.all(
     sections.sections.map((section, i) =>
-      resolveImages(
+      resolveSectionImage(
         section,
         reorderWithAssigned(sections.sources, assignments[i] ?? null),
         sections.topic,
         plugs as ImagePlugin[],
+        llm,
+        rerankModel,
         emit,
         signal,
       ),

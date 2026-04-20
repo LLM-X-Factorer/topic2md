@@ -26,6 +26,7 @@
     "@topic2md/cli": "workspace:*",
     "@topic2md/core": "workspace:*",
     "@topic2md/image-screenshot": "workspace:*",
+    "@topic2md/image-tavily": "workspace:*",
     "@topic2md/publish-file": "workspace:*",
     "@topic2md/shared": "workspace:*",
     "@topic2md/source-tavily": "workspace:*",
