@@ -35,14 +35,32 @@ cp .env.example .env
 
 pnpm build
 pnpm topic2md "DeepSeek V3.2 发布的技术亮点"  # CLI 端到端
+pnpm topic2md "DeepSeek V3.2 发布的技术亮点" \
+  --background "我是算法工程师，想弄清楚架构改动细节，用于内部技术分享"
+# 或
+pnpm topic2md "话题" --background-file ./brief.md
+
 pnpm topic2md list                             # 看历史 run
 pnpm topic2md show <run-id> --markdown         # 看某次 run 的完整正文
 pnpm topic2md regen <run-id> --section 2       # 只重跑第 3 节（0-based）
+pnpm topic2md regen <run-id> --section 2 \
+  --background "…覆盖原 run 的背景"             # 默认复用 source run 的 background
 # 或
 pnpm --filter @topic2md/web dev               # 起 Web UI (http://localhost:3000)
 ```
 
 产物统一写到仓库根目录 `out/`（`plugins.config.ts` 用 `import.meta.url` 锚定），CLI 和 Web 入口产出同一处。
+
+### 调研背景（`--background`）
+
+`topic` 只告诉流水线"要写什么"，`--background` 告诉流水线"给谁看、为什么写、从哪个角度切"——自由文本，贯穿 research → outline → sections 三步：
+
+- SourcePlugin 收到 `ResearchOptions.background`，自行决定是否使用（Perplexity 会折进 user message；Tavily 只吃检索 query，忽略）。
+- outline / sections 的 user prompt 条件拼接"调研背景：…"段落，约束选题、语气、受众。
+- 持久化在 `runs.background` 列；`regen` 默认复用 source run 的背景，可选 `--background` 覆盖。
+- Web UI 用折叠 textarea 暴露，可选填。
+
+同一话题换 background 会产出明显不同的切分和语气——避开通稿感。
 
 ### 已验证的模型（2026-04）
 

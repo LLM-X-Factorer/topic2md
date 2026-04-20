@@ -70,6 +70,8 @@ pnpm --filter @topic2md/web dev      # 起 http://localhost:3000
 - **`generateObject` 强制用 `mode: 'json'`**（`packages/core/src/llm.ts`），绕开 OpenRouter-routed providers (MiniMax/GLM) 的 tool-call 畸形 JSON 路径，把 sections 步耗时从 ~500s 降到 ~60s。正常完成 finishReason 是 `'stop'`（不再是 `'tool-calls'`）。只把 `length` 当截断信号；不要把其他 reason 误判为失败，上次那次误判触发全量重试把限流撞穿。
 - LLM.generate 对 `fallbackModels` 支持 — 传数组自动在首选失败时切下一个，发 `generation.fallback` 事件；Langfuse observer 会把 `generation.*` 事件映射成 trace.generation 节点。
 - Plugin 工厂函数规范：`createXxx(config): XxxPlugin`，工厂内做参数校验并抛 `Error`。`name` 字段是 plugin 的身份，出 warn/error 时会带上。**有长期资源（browser / db handle）** 实现 `dispose?()`，runner 结束时会调用。
+- **新加 run 入口必须在 `finally` 里调 `disposePlugins`**（`runner.ts` 里导出的 helper）。否则 `image-screenshot` 的 Playwright Chromium 会让 Node event loop 不空，CLI 看起来"挂住"但其实工作已经完成、入库了。`runTopic2md` 和 `regenSection` 都走这个规则。
+- CLI 位置参数（如 regen 的 runId）不要用 `!arg.startsWith('-')` 过滤——nanoid 以 `-` / `_` 开头是合法的，这样过滤会让一部分 id 无法被识别为 runId。
 - 每个 plugin 独立 package，`package.json` 里 workspace 依赖只写 `@topic2md/shared: workspace:*`，不要 cross-plugin。
 - commit message 英文祈使句，主语省略；description 写 "why" 不写 "what"。签名：
   ```
