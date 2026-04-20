@@ -28,16 +28,28 @@
 
 ```bash
 pnpm install                                  # Node 22+, pnpm 9+
-pnpm exec playwright install chromium         # 截图插件首次使用前
+pnpm --filter @topic2md/image-screenshot exec playwright install chromium  # 截图插件首次使用前
 
-cp .env.example .env.local
-# 填入 OPENROUTER_API_KEY + TAVILY_API_KEY
+cp .env.example .env
+# 填入 OPENROUTER_API_KEY + TAVILY_API_KEY + DEFAULT_MODEL
 
 pnpm build
 pnpm topic2md "DeepSeek V3.2 发布的技术亮点"  # CLI 端到端
 # 或
 pnpm --filter @topic2md/web dev               # 起 Web UI (http://localhost:3000)
 ```
+
+产物统一写到仓库根目录 `out/`（`plugins.config.ts` 用 `import.meta.url` 锚定），CLI 和 Web 入口产出同一处。
+
+### 已验证的模型（2026-04）
+
+| 模型                              | 状态      | 备注                                       |
+| --------------------------------- | --------- | ------------------------------------------ |
+| `openrouter/minimax/minimax-m2.7` | ✅ 默认   | 一次端到端 ~15s 跑完                       |
+| `openrouter/z-ai/glm-5.1`         | ⚠️ 不稳定 | structured output 偶发 Invalid JSON / 早停 |
+| `openrouter/qwen/qwen3.6-plus`    | ❌ 不兼容 | OpenRouter 不提供 `tool_choice` 支持       |
+
+换模型用 `pnpm topic2md "..." --model <id>` 或改 `DEFAULT_MODEL`。
 
 ## Monorepo 结构
 

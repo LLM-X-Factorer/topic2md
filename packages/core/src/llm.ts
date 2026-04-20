@@ -19,7 +19,14 @@ export interface GenerateTextOptions {
   maxTokens?: number;
 }
 
-export type FinishReason = 'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other' | 'unknown';
+export type FinishReason =
+  | 'stop'
+  | 'length'
+  | 'content-filter'
+  | 'tool-calls'
+  | 'error'
+  | 'other'
+  | 'unknown';
 
 export interface GenerateObjectResult<T> {
   object: T;
@@ -33,7 +40,9 @@ export interface GenerateTextResult {
 
 export interface LLM {
   readonly defaultModel: string;
-  generate<T extends z.ZodType>(opts: GenerateObjectOptions<T>): Promise<GenerateObjectResult<z.infer<T>>>;
+  generate<T extends z.ZodType>(
+    opts: GenerateObjectOptions<T>,
+  ): Promise<GenerateObjectResult<z.infer<T>>>;
   generateText(opts: GenerateTextOptions): Promise<GenerateTextResult>;
 }
 

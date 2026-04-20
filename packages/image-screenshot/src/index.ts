@@ -143,10 +143,7 @@ export function extractOgImageUrl(html: string): string | null {
     const content = el?.getAttribute('content')?.trim();
     if (content) return content;
   }
-  const linkImage = root
-    .querySelector('link[rel="image_src"]')
-    ?.getAttribute('href')
-    ?.trim();
+  const linkImage = root.querySelector('link[rel="image_src"]')?.getAttribute('href')?.trim();
   return linkImage || null;
 }
 
