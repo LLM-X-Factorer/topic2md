@@ -58,3 +58,9 @@ pre {
 code {
   padding: 2px 4px;
 }
+
+@keyframes topic2md-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

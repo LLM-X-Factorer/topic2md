@@ -20,6 +20,8 @@ export default function TopicRunner({ models }: { models: string[] }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
   const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
 
@@ -27,6 +29,14 @@ export default function TopicRunner({ models }: { models: string[] }) {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [events]);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, [running]);
+
+  const elapsedMs = running && startedAt ? now - startedAt : null;
 
   const run = useCallback(async () => {
     if (!topic.trim() || running) return;
@@ -36,6 +46,8 @@ export default function TopicRunner({ models }: { models: string[] }) {
     setLocation(null);
     setError(null);
     setCopied(false);
+    setStartedAt(Date.now());
+    setNow(Date.now());
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
@@ -113,10 +125,12 @@ export default function TopicRunner({ models }: { models: string[] }) {
         <input
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
-          placeholder="输入一句话话题，例如：DeepSeek V3.2 发布的技术亮点"
+          placeholder="输入一句话话题…"
+          title="例如：DeepSeek V3.2 发布的技术亮点"
           disabled={running}
           style={{
-            flex: '1 1 320px',
+            flex: '1 1 260px',
+            minWidth: 0,
             padding: '10px 12px',
             border: '1px solid var(--border)',
             borderRadius: 6,
@@ -147,13 +161,23 @@ export default function TopicRunner({ models }: { models: string[] }) {
             onClick={cancel}
             style={{
               padding: '10px 18px',
-              border: '1px solid var(--border)',
+              border: '1px solid #f59e0b',
               borderRadius: 6,
-              background: 'var(--panel)',
-              color: 'var(--fg)',
+              background: 'transparent',
+              color: '#f59e0b',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
             }}
           >
-            取消
+            <Spinner />
+            <span>取消</span>
+            {elapsedMs !== null && (
+              <span style={{ opacity: 0.75, fontVariantNumeric: 'tabular-nums' }}>
+                {formatElapsed(elapsedMs)}
+              </span>
+            )}
           </button>
         ) : (
           <button
@@ -272,6 +296,30 @@ export default function TopicRunner({ models }: { models: string[] }) {
 function basename(p: string): string {
   const m = /[^/\\]+$/.exec(p);
   return m ? m[0] : p;
+}
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
+}
+
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: '50%',
+        border: '2px solid #f59e0b',
+        borderTopColor: 'transparent',
+        animation: 'topic2md-spin 0.8s linear infinite',
+        display: 'inline-block',
+      }}
+    />
+  );
 }
 
 function formatEvent(ev: WorkflowEvent): string {
