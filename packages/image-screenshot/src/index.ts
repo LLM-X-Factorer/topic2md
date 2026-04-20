@@ -1,0 +1,172 @@
+import { createHash } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { chromium, type Browser } from 'playwright';
+import type { ImageOptions, ImagePlugin, ImageRef, ImageRequest, Source } from '@topic2md/shared';
+
+export interface ScreenshotImageOptions {
+  outDir?: string;
+  urlPrefix?: string;
+  concurrency?: number;
+  viewport?: { width: number; height: number };
+  timeoutMs?: number;
+  fullPage?: boolean;
+  preferOgImage?: boolean;
+  userAgent?: string;
+}
+
+const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
+
+export function screenshotImage(options: ScreenshotImageOptions = {}): ImagePlugin {
+  const outDir = resolve(options.outDir ?? './out/images');
+  const urlPrefix = options.urlPrefix ?? '';
+  const viewport = options.viewport ?? DEFAULT_VIEWPORT;
+  const timeoutMs = options.timeoutMs ?? 20_000;
+  const fullPage = options.fullPage ?? false;
+  const preferOgImage = options.preferOgImage ?? true;
+  const userAgent =
+    options.userAgent ??
+    'Mozilla/5.0 (topic2md; +https://github.com/LLM-X-Factorer/topic2md)';
+
+  const semaphore = createSemaphore(options.concurrency ?? 3);
+  let browserPromise: Promise<Browser> | null = null;
+
+  async function getBrowser(): Promise<Browser> {
+    if (!browserPromise) {
+      browserPromise = chromium.launch({ headless: true }).catch((err) => {
+        browserPromise = null;
+        if (err instanceof Error && /Executable doesn't exist|BrowserType\.launch/.test(err.message)) {
+          throw new Error(
+            'Playwright Chromium is not installed. Run `pnpm exec playwright install chromium` first.\n' +
+              `Original: ${err.message}`,
+          );
+        }
+        throw err;
+      });
+    }
+    return browserPromise;
+  }
+
+  return {
+    name: 'screenshot',
+    async capture(request: ImageRequest, reqOpts?: ImageOptions): Promise<ImageRef | null> {
+      const source = pickSource(request.sources);
+      if (!source) return null;
+
+      return semaphore(async () => {
+        if (preferOgImage) {
+          const og = await fetchOgImage(source, userAgent, timeoutMs, reqOpts?.signal).catch(() => null);
+          if (og) return og;
+        }
+
+        const browser = await getBrowser();
+        const ctx = await browser.newContext({ viewport, userAgent });
+        try {
+          const page = await ctx.newPage();
+          await page.goto(source.url, { waitUntil: 'load', timeout: timeoutMs });
+          const buffer = await page.screenshot({ type: 'png', fullPage });
+          const file = await persist(buffer, outDir, source.url, 'png');
+          return {
+            url: urlPrefix + file.publicUrl,
+            alt: request.section.title,
+            sourceUrl: source.url,
+            caption: request.section.imageHint?.purpose,
+            kind: 'screenshot',
+            width: viewport.width,
+            height: fullPage ? undefined : viewport.height,
+          };
+        } finally {
+          await ctx.close();
+        }
+      });
+    },
+  };
+
+  async function fetchOgImage(
+    source: Source,
+    ua: string,
+    timeout: number,
+    signal: AbortSignal | undefined,
+  ): Promise<ImageRef | null> {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeout);
+    const linkedAbort = () => ctrl.abort();
+    signal?.addEventListener('abort', linkedAbort, { once: true });
+    try {
+      const res = await fetch(source.url, {
+        headers: { 'user-agent': ua, accept: 'text/html,*/*;q=0.8' },
+        signal: ctrl.signal,
+        redirect: 'follow',
+      });
+      if (!res.ok) return null;
+      const html = (await res.text()).slice(0, 500_000);
+      const ogUrl = extractMeta(html, 'og:image') ?? extractMeta(html, 'twitter:image');
+      if (!ogUrl) return null;
+      const absolute = new URL(ogUrl, source.url).toString();
+      return {
+        url: absolute,
+        alt: source.title,
+        sourceUrl: source.url,
+        kind: 'og',
+      };
+    } finally {
+      clearTimeout(t);
+      signal?.removeEventListener('abort', linkedAbort);
+    }
+  }
+}
+
+function pickSource(sources: Source[]): Source | null {
+  const sorted = [...sources].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  return sorted[0] ?? null;
+}
+
+function extractMeta(html: string, property: string): string | null {
+  const re = new RegExp(
+    `<meta[^>]+(?:property|name)=["']${escapeRegex(property)}["'][^>]*content=["']([^"']+)["']`,
+    'i',
+  );
+  const match = re.exec(html);
+  if (match?.[1]) return match[1];
+  const reReverse = new RegExp(
+    `<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${escapeRegex(property)}["']`,
+    'i',
+  );
+  return reReverse.exec(html)?.[1] ?? null;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function persist(
+  buffer: Buffer,
+  outDir: string,
+  sourceUrl: string,
+  ext: string,
+): Promise<{ absolutePath: string; publicUrl: string }> {
+  await mkdir(outDir, { recursive: true });
+  const hash = createHash('sha1').update(sourceUrl).digest('hex').slice(0, 16);
+  const filename = `${hash}.${ext}`;
+  const absolutePath = join(outDir, filename);
+  await writeFile(absolutePath, buffer);
+  return { absolutePath, publicUrl: absolutePath };
+}
+
+function createSemaphore(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  return async function run<T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= max) {
+      await new Promise<void>((r) => queue.push(r));
+    }
+    active++;
+    try {
+      return await fn();
+    } finally {
+      active--;
+      const next = queue.shift();
+      if (next) next();
+    }
+  };
+}
