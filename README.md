@@ -35,6 +35,9 @@ cp .env.example .env
 
 pnpm build
 pnpm topic2md "DeepSeek V3.2 发布的技术亮点"  # CLI 端到端
+pnpm topic2md list                             # 看历史 run
+pnpm topic2md show <run-id> --markdown         # 看某次 run 的完整正文
+pnpm topic2md regen <run-id> --section 2       # 只重跑第 3 节（0-based）
 # 或
 pnpm --filter @topic2md/web dev               # 起 Web UI (http://localhost:3000)
 ```
@@ -59,13 +62,19 @@ topic2md/
 ├── apps/
 │   └── web/                     # Next.js 15 App Router：触发 + 流式进度 + markdown 预览
 ├── packages/
-│   ├── core/                    # Mastra workflow、plugin registry、LLM 抽象
-│   ├── shared/                  # 公共 types + zod schemas
-│   ├── source-tavily/           # 研究源插件（MVP）
-│   ├── image-screenshot/        # Playwright 截图插件（MVP）
-│   └── publish-file/            # md 文件落盘插件（MVP）
-└── cli/                         # topic2md 命令行
+│   ├── core/                    # Mastra workflow、plugin registry、LLM 抽象、SQLite 持久化、regen
+│   ├── shared/                  # 公共 types + zod schemas + 事件类型
+│   ├── source-tavily/           # Tavily 研究源
+│   ├── source-perplexity/       # Perplexity 研究源（多源聚合时的第二输入）
+│   ├── image-screenshot/        # Playwright og:image + 截图
+│   ├── image-library/           # Unsplash 图库
+│   ├── theme-md2wechat/         # 按 md2wechat 主题丰富 frontmatter
+│   ├── publish-md2wechat/       # 直接发布到 md2wechat → 公众号草稿
+│   └── publish-file/            # md 文件落盘
+└── cli/                         # topic2md CLI：run / list / show / regen
 ```
+
+**研究源多选** / **图片多源** / **主题 + 发布** 都通过在 `plugins.config.ts` 里堆叠插件启用，`packages/core` 对任何具体源/目的地都无感知。
 
 **架构红线**：`packages/core` 不得 `import` 任何 plugin 包。所有 plugin 通过根目录 `plugins.config.ts` 显式注册后注入。
 
