@@ -85,6 +85,17 @@ export function screenshotImage(options: ScreenshotImageOptions = {}): ImagePlug
         }
       });
     },
+    async dispose() {
+      if (!browserPromise) return;
+      const p = browserPromise;
+      browserPromise = null;
+      try {
+        const browser = await p;
+        await browser.close();
+      } catch {
+        /* best-effort */
+      }
+    },
   };
 
   async function fetchOgImage(

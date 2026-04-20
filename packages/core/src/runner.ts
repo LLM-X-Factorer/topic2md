@@ -99,8 +99,27 @@ export async function runTopic2md(
     }
     throw err;
   } finally {
+    await disposePlugins(options.plugins, emit);
     if (ownedDb && db) db.close();
   }
+}
+
+async function disposePlugins(plugins: PluginConfig, emit: EmitFn): Promise<void> {
+  const all = [...plugins.sources, ...plugins.images, ...plugins.themes, ...plugins.publish];
+  await Promise.all(
+    all.map(async (p) => {
+      if (typeof p.dispose !== 'function') return;
+      try {
+        await p.dispose();
+      } catch (err) {
+        log(
+          emit,
+          'warn',
+          `plugin "${p.name}" dispose failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }),
+  );
 }
 
 interface Recorder {

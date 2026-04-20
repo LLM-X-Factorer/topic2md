@@ -88,7 +88,7 @@ export async function writeSection(
       log(
         emit,
         'warn',
-        `section "${outline.id}" both attempts failed (${best.error}); emitting empty section.`,
+        `section "${outline.id}" both attempts failed (${best.error}); falling back to outline bullets.`,
       );
     } else if (isSuspect(best.markdown, best.finishReason)) {
       log(
@@ -106,12 +106,13 @@ export async function writeSection(
           .filter((u): u is string => typeof u === 'string'),
       )
     : [];
+  const markdown = best.ok && best.markdown.length > 0 ? best.markdown : renderFallback(outline);
   return {
     id: outline.id,
     title: outline.title,
     points: outline.points,
     imageHint: outline.imageHint,
-    markdown: best.ok ? best.markdown : '',
+    markdown,
     images: [],
     citations,
   };
@@ -163,6 +164,13 @@ function isSuspect(markdown: string, finishReason: string): boolean {
   if (finishReason === 'length') return true;
   if (markdown.length < MIN_SECTION_CHARS) return true;
   return false;
+}
+
+// When both LLM attempts fail we'd rather show the outline bullets than a
+// bare H2 followed by an image. Makes the gap legible to the reader.
+function renderFallback(outline: SectionOutline): string {
+  const bullets = outline.points.map((p) => `- ${p}`).join('\n');
+  return `> 本节由兜底逻辑渲染：LLM 两次均未返回有效 markdown，以下为大纲要点。\n\n${bullets}`;
 }
 
 function dedupe<T>(arr: T[]): T[] {

@@ -5,6 +5,12 @@ import type { SectionOutline } from './section.js';
 
 export interface BasePlugin {
   readonly name: string;
+  /**
+   * Called once after the workflow finishes (success or failure) to release
+   * any long-lived resource (e.g. a Playwright browser). Best-effort —
+   * failures are logged and swallowed so teardown never fails a run.
+   */
+  dispose?(): Promise<void> | void;
 }
 
 export interface ResearchOptions {
