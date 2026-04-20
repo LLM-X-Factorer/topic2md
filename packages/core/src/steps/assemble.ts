@@ -8,7 +8,8 @@ import { AssembleOutputSchema, ImagesOutputSchema } from './schemas.js';
 
 export const assembleStep = createStep({
   id: 'assemble',
-  description: 'Build frontmatter (via theme plugins) and stitch sections + citations into markdown.',
+  description:
+    'Build frontmatter (via theme plugins) and stitch sections + citations into markdown.',
   inputSchema: ImagesOutputSchema,
   outputSchema: AssembleOutputSchema,
   execute: async ({ inputData, runtimeContext }) => {

@@ -81,7 +81,10 @@ export function tavilySource(options: TavilySourceOptions): SourcePlugin {
   };
 }
 
-function combineSignals(external: AbortSignal | undefined, timeoutMs: number | undefined): AbortSignal | undefined {
+function combineSignals(
+  external: AbortSignal | undefined,
+  timeoutMs: number | undefined,
+): AbortSignal | undefined {
   if (!external && !timeoutMs) return undefined;
   const ctrl = new AbortController();
   if (external) {
@@ -89,7 +92,10 @@ function combineSignals(external: AbortSignal | undefined, timeoutMs: number | u
     else external.addEventListener('abort', () => ctrl.abort(external.reason), { once: true });
   }
   if (timeoutMs) {
-    setTimeout(() => ctrl.abort(new Error(`Tavily request timed out after ${timeoutMs}ms`)), timeoutMs);
+    setTimeout(
+      () => ctrl.abort(new Error(`Tavily request timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
   }
   return ctrl.signal;
 }

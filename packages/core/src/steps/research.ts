@@ -6,7 +6,8 @@ import { ResearchOutputSchema, WorkflowInputSchema } from './schemas.js';
 
 export const researchStep = createStep({
   id: 'research',
-  description: 'Collect authoritative sources for the topic via the first configured source plugin.',
+  description:
+    'Collect authoritative sources for the topic via the first configured source plugin.',
   inputSchema: WorkflowInputSchema,
   outputSchema: ResearchOutputSchema,
   execute: async ({ inputData, runtimeContext, abortSignal }) => {

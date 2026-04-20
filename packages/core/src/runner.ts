@@ -28,10 +28,7 @@ export async function runTopic2md(
   const run = await workflow.createRunAsync();
 
   const runtimeContext = new RuntimeContext();
-  runtimeContext.set(
-    RUNTIME_KEY,
-    buildRuntime({ plugins: options.plugins, llm, emit, model }),
-  );
+  runtimeContext.set(RUNTIME_KEY, buildRuntime({ plugins: options.plugins, llm, emit, model }));
 
   const result = await run.start({
     inputData: { topic: input.topic, model },

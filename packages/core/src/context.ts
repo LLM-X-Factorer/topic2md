@@ -23,7 +23,9 @@ export function getRuntime(ctx: RuntimeContext): Topic2mdRuntime {
   return runtime;
 }
 
-export function buildRuntime(partial: Partial<Topic2mdRuntime> & Pick<Topic2mdRuntime, 'plugins' | 'llm'>): Topic2mdRuntime {
+export function buildRuntime(
+  partial: Partial<Topic2mdRuntime> & Pick<Topic2mdRuntime, 'plugins' | 'llm'>,
+): Topic2mdRuntime {
   return {
     emit: noopEmit,
     model: partial.llm.defaultModel,

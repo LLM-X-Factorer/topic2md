@@ -25,8 +25,7 @@ export function screenshotImage(options: ScreenshotImageOptions = {}): ImagePlug
   const fullPage = options.fullPage ?? false;
   const preferOgImage = options.preferOgImage ?? true;
   const userAgent =
-    options.userAgent ??
-    'Mozilla/5.0 (topic2md; +https://github.com/LLM-X-Factorer/topic2md)';
+    options.userAgent ?? 'Mozilla/5.0 (topic2md; +https://github.com/LLM-X-Factorer/topic2md)';
 
   const semaphore = createSemaphore(options.concurrency ?? 3);
   let browserPromise: Promise<Browser> | null = null;
@@ -35,7 +34,10 @@ export function screenshotImage(options: ScreenshotImageOptions = {}): ImagePlug
     if (!browserPromise) {
       browserPromise = chromium.launch({ headless: true }).catch((err) => {
         browserPromise = null;
-        if (err instanceof Error && /Executable doesn't exist|BrowserType\.launch/.test(err.message)) {
+        if (
+          err instanceof Error &&
+          /Executable doesn't exist|BrowserType\.launch/.test(err.message)
+        ) {
           throw new Error(
             'Playwright Chromium is not installed. Run `pnpm exec playwright install chromium` first.\n' +
               `Original: ${err.message}`,
@@ -55,7 +57,9 @@ export function screenshotImage(options: ScreenshotImageOptions = {}): ImagePlug
 
       return semaphore(async () => {
         if (preferOgImage) {
-          const og = await fetchOgImage(source, userAgent, timeoutMs, reqOpts?.signal).catch(() => null);
+          const og = await fetchOgImage(source, userAgent, timeoutMs, reqOpts?.signal).catch(
+            () => null,
+          );
           if (og) return og;
         }
 

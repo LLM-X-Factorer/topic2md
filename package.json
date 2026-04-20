@@ -15,11 +15,18 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "dev": "turbo run dev",
+    "topic2md": "topic2md",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\""
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@topic2md/cli": "workspace:*",
+    "@topic2md/core": "workspace:*",
+    "@topic2md/image-screenshot": "workspace:*",
+    "@topic2md/publish-file": "workspace:*",
+    "@topic2md/shared": "workspace:*",
+    "@topic2md/source-tavily": "workspace:*",
     "@types/node": "^22.10.5",
     "eslint": "^9.17.0",
     "prettier": "^3.4.2",

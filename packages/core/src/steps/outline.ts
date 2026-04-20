@@ -15,7 +15,8 @@ const OUTLINE_SYSTEM = `你是一名中文科技与商业写作编辑。基于�
 
 export const outlineStep = createStep({
   id: 'outline',
-  description: 'Produce an article outline (title/digest/sections) grounded in the research sources.',
+  description:
+    'Produce an article outline (title/digest/sections) grounded in the research sources.',
   inputSchema: ResearchOutputSchema,
   outputSchema: OutlineOutputSchema,
   execute: async ({ inputData, runtimeContext, abortSignal }) => {

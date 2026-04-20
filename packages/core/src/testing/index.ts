@@ -6,7 +6,11 @@ import { createMockPublish, type MockPublishHandle } from './mock-publish.js';
 export { createMockLLM } from './mock-llm.js';
 export { createMockSource } from './mock-source.js';
 export { createMockImage } from './mock-image.js';
-export { createMockPublish, type MockPublishHandle, type MockPublishState } from './mock-publish.js';
+export {
+  createMockPublish,
+  type MockPublishHandle,
+  type MockPublishState,
+} from './mock-publish.js';
 export { runSmoke } from './smoke.js';
 
 export interface MockPluginBundle {
