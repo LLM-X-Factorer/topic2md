@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkFrontmatter from 'remark-frontmatter';
 import remarkGfm from 'remark-gfm';
 import type { WorkflowEvent } from '@topic2md/shared';
 
@@ -18,7 +19,14 @@ export default function TopicRunner({ models }: { models: string[] }) {
   const [location, setLocation] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const logRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [events]);
 
   const run = useCallback(async () => {
     if (!topic.trim() || running) return;
@@ -27,6 +35,7 @@ export default function TopicRunner({ models }: { models: string[] }) {
     setMarkdown(null);
     setLocation(null);
     setError(null);
+    setCopied(false);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
@@ -72,6 +81,31 @@ export default function TopicRunner({ models }: { models: string[] }) {
   const cancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
+
+  const copyMarkdown = useCallback(async () => {
+    if (!markdown) return;
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('复制失败，请检查浏览器剪贴板权限');
+    }
+  }, [markdown]);
+
+  const downloadMarkdown = useCallback(() => {
+    if (!markdown) return;
+    const filename = location ? basename(location) : 'article.md';
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [markdown, location]);
 
   return (
     <section>
@@ -141,6 +175,7 @@ export default function TopicRunner({ models }: { models: string[] }) {
 
       {events.length > 0 && (
         <div
+          ref={logRef}
           style={{
             marginTop: 16,
             padding: 12,
@@ -183,16 +218,56 @@ export default function TopicRunner({ models }: { models: string[] }) {
             borderRadius: 8,
           }}
         >
-          {location && (
-            <p style={{ color: 'var(--muted)', marginTop: 0, fontSize: 13 }}>
-              已写入：<code>{location}</code>
-            </p>
-          )}
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              marginBottom: 12,
+              fontSize: 13,
+              color: 'var(--muted)',
+            }}
+          >
+            {location && <span>已写入 <code>out/{basename(location)}</code></span>}
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={copyMarkdown}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                background: 'var(--panel)',
+                color: 'var(--fg)',
+                fontSize: 13,
+              }}
+            >
+              {copied ? '已复制 ✓' : '复制 markdown'}
+            </button>
+            <button
+              onClick={downloadMarkdown}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                background: 'var(--panel)',
+                color: 'var(--fg)',
+                fontSize: 13,
+              }}
+            >
+              下载 .md
+            </button>
+          </div>
+          <ReactMarkdown remarkPlugins={[remarkFrontmatter, remarkGfm]}>{markdown}</ReactMarkdown>
         </article>
       )}
     </section>
   );
+}
+
+function basename(p: string): string {
+  const m = /[^/\\]+$/.exec(p);
+  return m ? m[0] : p;
 }
 
 function formatEvent(ev: WorkflowEvent): string {
