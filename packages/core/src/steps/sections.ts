@@ -2,7 +2,7 @@ import { createStep } from '@mastra/core';
 import { z } from 'zod';
 import type { SectionContent, SectionOutline, Source } from '@topic2md/shared';
 import { getRuntime } from '../context.js';
-import { log, progress, stepEnd, stepError, stepStart } from '../logger.js';
+import { log, progress, stepEnd, stepError, stepStart, type EmitFn } from '../logger.js';
 import { OutlineOutputSchema, SectionsOutputSchema } from './schemas.js';
 
 const SECTION_SYSTEM = `你是一名中文深度写作者。基于该节的大纲与给定研究资料，写出 300~600 字的 markdown 段落。
@@ -29,7 +29,7 @@ export const sectionsStep = createStep({
       progress(emit, 'sections', `generating ${inputData.outline.sections.length} section bodies`);
       const sections = await Promise.all(
         inputData.outline.sections.map((section) =>
-          writeSection(section, inputData.sources, llm, model, abortSignal),
+          writeSection(section, inputData.sources, llm, model, emit, abortSignal),
         ),
       );
       log(emit, 'info', `sections produced ${sections.length} bodies`);
@@ -53,6 +53,7 @@ async function writeSection(
   sources: Source[],
   llm: ReturnType<typeof getRuntime>['llm'],
   model: string,
+  emit: EmitFn,
   signal?: AbortSignal,
 ): Promise<SectionContent> {
   const sourceList = sources
@@ -67,9 +68,17 @@ async function writeSection(
     system: SECTION_SYSTEM,
     model,
     signal,
+    maxTokens: 4096,
   });
+  if (res.finishReason === 'length') {
+    log(
+      emit,
+      'warn',
+      `section "${outline.id}" body hit the token budget (finishReason=length) — output likely truncated. Consider a shorter target length or a larger maxTokens.`,
+    );
+  }
   const citations = dedupe(
-    res.citationIndices
+    res.object.citationIndices
       .map((n) => sources[n - 1]?.url)
       .filter((u): u is string => typeof u === 'string'),
   );
@@ -78,7 +87,7 @@ async function writeSection(
     title: outline.title,
     points: outline.points,
     imageHint: outline.imageHint,
-    markdown: res.markdown.trim(),
+    markdown: res.object.markdown.trim(),
     images: [],
     citations,
   };

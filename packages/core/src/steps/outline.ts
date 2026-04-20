@@ -25,16 +25,24 @@ export const outlineStep = createStep({
     try {
       progress(emit, 'outline', `drafting outline with ${inputData.sources.length} sources`);
       const prompt = renderPrompt(inputData.topic, inputData.sources);
-      const raw = await llm.generate({
+      const result = await llm.generate({
         schema: OutlineSchema,
         prompt,
         system: OUTLINE_SYSTEM,
         model,
         signal: abortSignal,
+        maxTokens: 4096,
       });
+      if (result.finishReason === 'length') {
+        log(
+          emit,
+          'warn',
+          'outline hit the token budget (finishReason=length); the JSON may be incomplete. Consider a higher maxTokens or a shorter prompt.',
+        );
+      }
       const outline = {
-        ...raw,
-        sections: raw.sections.map((s) => ({ ...s, id: s.id || nanoid(8) })),
+        ...result.object,
+        sections: result.object.sections.map((s) => ({ ...s, id: s.id || nanoid(8) })),
       };
       log(emit, 'info', `outline "${outline.title}" with ${outline.sections.length} sections`);
       stepEnd(emit, 'outline', started);

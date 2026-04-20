@@ -35,15 +35,15 @@ export function createMockLLM(): LLM {
     async generate({ schema, prompt }) {
       const topic = extractTopic(prompt) ?? 'mock topic';
       const outlineAttempt = schema.safeParse(MOCK_OUTLINE(topic));
-      if (outlineAttempt.success) return outlineAttempt.data;
+      if (outlineAttempt.success) return { object: outlineAttempt.data, finishReason: 'stop' };
       const sectionAttempt = schema.safeParse(MOCK_SECTION(topic));
-      if (sectionAttempt.success) return sectionAttempt.data;
+      if (sectionAttempt.success) return { object: sectionAttempt.data, finishReason: 'stop' };
       throw new Error(
         'createMockLLM: schema not supported; extend MOCK_OUTLINE / MOCK_SECTION or provide a custom LLM.',
       );
     },
     async generateText({ prompt }) {
-      return `[mock response] ${prompt.slice(0, 80)}`;
+      return { text: `[mock response] ${prompt.slice(0, 80)}`, finishReason: 'stop' };
     },
   };
 }
