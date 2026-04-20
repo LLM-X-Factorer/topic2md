@@ -25,14 +25,28 @@ export const outlineStep = createStep({
     try {
       progress(emit, 'outline', `drafting outline with ${inputData.sources.length} sources`);
       const prompt = renderPrompt(inputData.topic, inputData.sources);
-      const result = await llm.generate({
-        schema: OutlineSchema,
-        prompt,
-        system: OUTLINE_SYSTEM,
-        model,
-        signal: abortSignal,
-        maxTokens: 4096,
-      });
+
+      const attempt = () =>
+        llm.generate({
+          schema: OutlineSchema,
+          prompt,
+          system: OUTLINE_SYSTEM,
+          model,
+          signal: abortSignal,
+          maxTokens: 4096,
+        });
+
+      let result: Awaited<ReturnType<typeof attempt>>;
+      try {
+        result = await attempt();
+      } catch (err) {
+        log(
+          emit,
+          'warn',
+          `outline first attempt failed (${err instanceof Error ? err.message : String(err)}); retrying once.`,
+        );
+        result = await attempt();
+      }
       if (result.finishReason === 'length') {
         log(
           emit,
