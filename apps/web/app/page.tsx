@@ -1,6 +1,7 @@
 import TopicRunner from './TopicRunner';
 
 const MODEL_OPTIONS = [
+  'openrouter/minimax/minimax-m2.7',
   'openrouter/anthropic/claude-sonnet-4-6',
   'openrouter/anthropic/claude-opus-4-7',
   'openrouter/openai/gpt-5',
