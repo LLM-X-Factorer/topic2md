@@ -1,4 +1,24 @@
-export { runTopic2md, Topic2mdRunError, type RunTopic2mdOptions } from './runner.js';
+export {
+  runTopic2md,
+  Topic2mdRunError,
+  type RunTopic2mdOptions,
+  type RunTopic2mdResult,
+} from './runner.js';
+export {
+  openDatabase,
+  createRun,
+  saveStage,
+  completeRun,
+  listRuns,
+  getRun,
+  type DatabaseType,
+  type CreateRunInput,
+  type CompleteRunPatch,
+  type ListRunsOptions,
+  type FullRun,
+  type RunRecord,
+  type RunStatus,
+} from './persistence.js';
 export { createTopic2mdWorkflow, type Topic2mdWorkflow } from './workflow.js';
 export { createLLM, LLMNotConfiguredError, type LLM, type LLMOptions } from './llm.js';
 export {
