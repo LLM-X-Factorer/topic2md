@@ -1,6 +1,6 @@
 # Uses the official Playwright image so Chromium + its system deps are
 # already installed for @topic2md/image-screenshot.
-FROM mcr.microsoft.com/playwright:v1.56.2-noble AS base
+FROM mcr.microsoft.com/playwright:v1.59.1-noble AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
