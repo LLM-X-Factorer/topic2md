@@ -3,22 +3,19 @@
 FROM mcr.microsoft.com/playwright:v1.59.1-noble AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+# build-essential + python3: better-sqlite3 falls back to building from
+# source on some glibc/node combinations.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential python3 \
+    && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /app
 
 FROM base AS deps
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc turbo.json tsconfig.base.json ./
-COPY apps/web/package.json apps/web/
-COPY cli/package.json cli/
-COPY packages/shared/package.json packages/shared/
-COPY packages/core/package.json packages/core/
-COPY packages/source-tavily/package.json packages/source-tavily/
-COPY packages/image-screenshot/package.json packages/image-screenshot/
-COPY packages/publish-file/package.json packages/publish-file/
+COPY . .
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
-COPY . .
 RUN pnpm build
 
 FROM base AS runtime
