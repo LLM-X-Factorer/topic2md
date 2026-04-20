@@ -60,6 +60,20 @@ pnpm --filter @topic2md/web dev      # 起 http://localhost:3000
   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
   ```
 
-## 已知待办
+## 已知待办 / bug 追踪
 
-见根目录 `README.md` 「未来功能」段，或提出来一起 scope。红线是：任何新的外部耦合一律走 plugin 通道，不往 `packages/core` 里加 `import`。
+一律走 GitHub Issues（repo `LLM-X-Factorer/topic2md`）：
+
+```bash
+gh issue list --repo LLM-X-Factorer/topic2md --state open
+gh issue list --label p1-important
+gh issue view <n>
+```
+
+标签体系：
+
+- 优先级：`p0-blocker` / `p1-important` / `p2-later`
+- 区域：`area/web` / `area/core` / `area/plugin` / `area/cli` / `area/infra`
+- 类型：默认 `bug` / `enhancement`
+
+在 commit message 结尾写 `Closes #N`（或多条 `Closes #1 #2 #20`）即可自动关单。红线是：任何新的外部耦合一律走 plugin 通道，不往 `packages/core` 里加 `import`，想加新源 / 发布目的地就开新 `packages/<source|image|theme|publish>-<name>` 包。

@@ -182,6 +182,14 @@ services:
 
 两者都走插件通道，`core` 不感知下游存在。
 
+## 路线图 / bug 追踪
+
+在 [GitHub Issues](https://github.com/LLM-X-Factorer/topic2md/issues) 维护：
+
+- `p0-blocker` / `p1-important` / `p2-later` 标优先级
+- `area/web` / `area/core` / `area/plugin` / `area/cli` / `area/infra` 标区域
+- 提新需求或 bug 请直接开 issue，PR 里用 `Closes #N` 关联
+
 ## 许可证
 
 MIT — 见 [LICENSE](./LICENSE)。

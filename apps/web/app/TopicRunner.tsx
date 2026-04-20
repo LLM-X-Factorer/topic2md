@@ -229,7 +229,11 @@ export default function TopicRunner({ models }: { models: string[] }) {
               color: 'var(--muted)',
             }}
           >
-            {location && <span>已写入 <code>out/{basename(location)}</code></span>}
+            {location && (
+              <span>
+                已写入 <code>out/{basename(location)}</code>
+              </span>
+            )}
             <div style={{ flex: 1 }} />
             <button
               onClick={copyMarkdown}
