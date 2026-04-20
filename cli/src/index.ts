@@ -1,4 +1,4 @@
-import { runTopic2md } from '@topic2md/core';
+import { createLangfuseObserver, runTopic2md } from '@topic2md/core';
 import type { WorkflowEvent } from '@topic2md/shared';
 import { loadPluginConfig } from './config.js';
 
@@ -41,7 +41,7 @@ export async function main(argv: string[]): Promise<void> {
   process.stderr.write(`[topic2md] loaded config from ${source}\n`);
   process.stderr.write(`[topic2md] topic: ${args.topic}\n`);
 
-  const emit = (event: WorkflowEvent) => {
+  const printEvent = (event: WorkflowEvent) => {
     if (args.verbose) {
       process.stderr.write(`[${event.type}] ${summarizeEvent(event)}\n`);
       return;
@@ -52,12 +52,17 @@ export async function main(argv: string[]): Promise<void> {
     else if (event.type === 'step.error') process.stderr.write(`✗ ${event.step}: ${event.error}\n`);
   };
 
-  const result = await runTopic2md(
-    { topic: args.topic, model: args.model },
-    { plugins: config, emit },
-  );
+  const observer = await createLangfuseObserver(args.topic, { passthrough: printEvent });
 
-  process.stdout.write(`${result.location}\n`);
+  try {
+    const result = await runTopic2md(
+      { topic: args.topic, model: args.model },
+      { plugins: config, emit: observer.emit },
+    );
+    process.stdout.write(`${result.location}\n`);
+  } finally {
+    await observer.flush();
+  }
 }
 
 function parseArgs(argv: string[]): CliArgs {

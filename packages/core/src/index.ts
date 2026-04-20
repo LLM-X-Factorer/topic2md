@@ -13,6 +13,11 @@ export {
 export { toArticle, toMarkdown } from './markdown.js';
 export { RUNTIME_KEY, type Topic2mdRuntime, getRuntime } from './context.js';
 export { noopEmit, type EmitFn } from './logger.js';
+export {
+  createLangfuseObserver,
+  type LangfuseObserver,
+  type LangfuseObserverOptions,
+} from './observability.js';
 export type {
   WorkflowInputValue,
   ResearchOutput,

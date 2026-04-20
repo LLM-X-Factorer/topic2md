@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runTopic2md } from '@topic2md/core';
+import { createLangfuseObserver, runTopic2md } from '@topic2md/core';
 import type { WorkflowEvent } from '@topic2md/shared';
 import { getPluginConfig } from '@/lib/config';
 
@@ -25,18 +25,20 @@ export async function POST(req: Request) {
       const write = (payload: unknown) => {
         controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
       };
-      const emit = (event: WorkflowEvent) => write({ kind: 'event', event });
+      const passthrough = (event: WorkflowEvent) => write({ kind: 'event', event });
+      const observer = await createLangfuseObserver(topic, { passthrough });
 
       try {
         const config = await getPluginConfig();
         const result = await runTopic2md(
           { topic, model: body.model },
-          { plugins: config, emit, signal: req.signal },
+          { plugins: config, emit: observer.emit, signal: req.signal },
         );
         write({ kind: 'done', location: result.location, markdown: result.markdown });
       } catch (err) {
         write({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
       } finally {
+        await observer.flush();
         controller.close();
       }
     },
