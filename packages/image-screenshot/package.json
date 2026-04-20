@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@topic2md/shared": "workspace:*",
+    "node-html-parser": "^7.0.1",
     "playwright": "^1.56.2"
   }
 }

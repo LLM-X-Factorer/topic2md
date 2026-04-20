@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { parse as parseHtml } from 'node-html-parser';
 import { chromium, type Browser } from 'playwright';
 import type { ImageOptions, ImagePlugin, ImageRef, ImageRequest, Source } from '@topic2md/shared';
 
@@ -104,7 +105,7 @@ export function screenshotImage(options: ScreenshotImageOptions = {}): ImagePlug
       });
       if (!res.ok) return null;
       const html = (await res.text()).slice(0, 500_000);
-      const ogUrl = extractMeta(html, 'og:image') ?? extractMeta(html, 'twitter:image');
+      const ogUrl = extractOgImageUrl(html);
       if (!ogUrl) return null;
       const absolute = new URL(ogUrl, source.url).toString();
       return {
@@ -125,22 +126,27 @@ function pickSource(sources: Source[]): Source | null {
   return sorted[0] ?? null;
 }
 
-function extractMeta(html: string, property: string): string | null {
-  const re = new RegExp(
-    `<meta[^>]+(?:property|name)=["']${escapeRegex(property)}["'][^>]*content=["']([^"']+)["']`,
-    'i',
-  );
-  const match = re.exec(html);
-  if (match?.[1]) return match[1];
-  const reReverse = new RegExp(
-    `<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${escapeRegex(property)}["']`,
-    'i',
-  );
-  return reReverse.exec(html)?.[1] ?? null;
-}
+const OG_META_KEYS = [
+  'og:image:secure_url',
+  'og:image:url',
+  'og:image',
+  'twitter:image:src',
+  'twitter:image',
+] as const;
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function extractOgImageUrl(html: string): string | null {
+  const root = parseHtml(html, { blockTextElements: { script: false, style: false } });
+  for (const key of OG_META_KEYS) {
+    const el =
+      root.querySelector(`meta[property="${key}"]`) ?? root.querySelector(`meta[name="${key}"]`);
+    const content = el?.getAttribute('content')?.trim();
+    if (content) return content;
+  }
+  const linkImage = root
+    .querySelector('link[rel="image_src"]')
+    ?.getAttribute('href')
+    ?.trim();
+  return linkImage || null;
 }
 
 async function persist(
