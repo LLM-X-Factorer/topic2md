@@ -48,6 +48,8 @@ export const sectionsStep = createStep({
   },
 });
 
+const MIN_SECTION_CHARS = 120;
+
 async function writeSection(
   outline: SectionOutline,
   sources: Source[],
@@ -62,21 +64,32 @@ async function writeSection(
     .join('\n');
   const points = outline.points.map((p, i) => `${i + 1}. ${p}`).join('\n');
   const prompt = `章节标题：${outline.title}\n\n要点：\n${points}\n\n可用资料：\n${sourceList}`;
-  const res = await llm.generate({
-    schema: SectionWriteSchema,
-    prompt,
-    system: SECTION_SYSTEM,
-    model,
-    signal,
-    maxTokens: 4096,
-  });
-  if (res.finishReason === 'length') {
+
+  let res = await callLLM();
+  let markdown = res.object.markdown.trim();
+
+  const suspect = isSuspect(markdown, res.finishReason);
+  if (suspect) {
     log(
       emit,
       'warn',
-      `section "${outline.id}" body hit the token budget (finishReason=length) — output likely truncated. Consider a shorter target length or a larger maxTokens.`,
+      `section "${outline.id}" returned ${markdown.length} chars with finishReason=${res.finishReason}; retrying once.`,
     );
+    const retry = await callLLM();
+    const retryMd = retry.object.markdown.trim();
+    if (retryMd.length > markdown.length || (res.finishReason !== 'stop' && retry.finishReason === 'stop')) {
+      res = retry;
+      markdown = retryMd;
+    }
+    if (isSuspect(markdown, res.finishReason)) {
+      log(
+        emit,
+        'warn',
+        `section "${outline.id}" still suspect after retry (${markdown.length} chars, finishReason=${res.finishReason}); keeping partial output.`,
+      );
+    }
   }
+
   const citations = dedupe(
     res.object.citationIndices
       .map((n) => sources[n - 1]?.url)
@@ -87,10 +100,28 @@ async function writeSection(
     title: outline.title,
     points: outline.points,
     imageHint: outline.imageHint,
-    markdown: res.object.markdown.trim(),
+    markdown,
     images: [],
     citations,
   };
+
+  function callLLM() {
+    return llm.generate({
+      schema: SectionWriteSchema,
+      prompt,
+      system: SECTION_SYSTEM,
+      model,
+      signal,
+      maxTokens: 4096,
+    });
+  }
+}
+
+function isSuspect(markdown: string, finishReason: string): boolean {
+  if (finishReason === 'length') return true;
+  if (finishReason !== 'stop') return true;
+  if (markdown.length < MIN_SECTION_CHARS) return true;
+  return false;
 }
 
 function dedupe<T>(arr: T[]): T[] {

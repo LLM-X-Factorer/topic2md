@@ -50,6 +50,8 @@ export async function main(argv: string[]): Promise<void> {
     else if (event.type === 'step.end')
       process.stderr.write(`✓ ${event.step} (${event.durationMs}ms)\n`);
     else if (event.type === 'step.error') process.stderr.write(`✗ ${event.step}: ${event.error}\n`);
+    else if (event.type === 'log' && (event.level === 'warn' || event.level === 'error'))
+      process.stderr.write(`⚠ ${event.message}\n`);
   };
 
   const observer = await createLangfuseObserver(args.topic, { passthrough: printEvent });
