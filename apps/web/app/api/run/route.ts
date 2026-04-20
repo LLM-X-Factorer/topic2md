@@ -10,6 +10,7 @@ export const maxDuration = 600;
 interface RunBody {
   topic?: string;
   model?: string;
+  background?: string;
 }
 
 export async function POST(req: Request) {
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
   if (!topic) {
     return NextResponse.json({ error: 'topic is required' }, { status: 400 });
   }
+  const background = body.background?.trim() || undefined;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
       try {
         const config = await getPluginConfig();
         const result = await runTopic2md(
-          { topic, model: body.model },
+          { topic, model: body.model, background },
           { plugins: config, emit: observer.emit, signal: req.signal },
         );
         write({ kind: 'done', location: result.location, markdown: result.markdown });

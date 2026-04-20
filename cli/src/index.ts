@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import {
   createLangfuseObserver,
   getRun,
@@ -12,20 +13,22 @@ import { loadPluginConfig } from './config.js';
 const HELP = `topic2md — natural-language topic → markdown article
 
 Usage:
-  topic2md "<topic>" [--model <id>] [--config <path>] [--verbose]
+  topic2md "<topic>" [--background <text>|--background-file <path>] [--model <id>] [--config <path>] [--verbose]
   topic2md list [--limit <n>] [--status <running|success|failed>]
   topic2md show <run-id> [--markdown]
-  topic2md regen <run-id> --section <n> [--model <id>] [--config <path>]
+  topic2md regen <run-id> --section <n> [--background <text>|--background-file <path>] [--model <id>] [--config <path>]
 
 Options:
-  --model, -m     Model id (e.g. openrouter/anthropic/claude-sonnet-4-6)
-  --config, -c    Path to plugins.config (default: ./plugins.config.ts)
-  --verbose, -v   Log all workflow events
-  --limit <n>     list: max rows to show (default 20)
-  --status <s>    list: filter by status
-  --markdown      show: print the generated markdown body
-  --section <n>   regen: 0-based section index to rewrite
-  --help, -h      Show this help
+  --model, -m         Model id (e.g. openrouter/anthropic/claude-sonnet-4-6)
+  --config, -c        Path to plugins.config (default: ./plugins.config.ts)
+  --background <t>    Freeform context (your role, goal, desired angle) threaded into research/outline/sections prompts
+  --background-file   Read background text from a UTF-8 file
+  --verbose, -v       Log all workflow events
+  --limit <n>         list: max rows to show (default 20)
+  --status <s>        list: filter by status
+  --markdown          show: print the generated markdown body
+  --section <n>       regen: 0-based section index to rewrite
+  --help, -h          Show this help
 
 Env:
   OPENROUTER_API_KEY  required unless a mock LLM is injected via config
@@ -53,17 +56,27 @@ async function cmdRegen(argv: string[]): Promise<void> {
   let sectionIndex: number | undefined;
   let model: string | undefined;
   let configPath: string | undefined;
+  let background: string | undefined;
+  let backgroundFile: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--section') sectionIndex = Number(argv[++i]);
     else if (a === '--model' || a === '-m') model = argv[++i];
     else if (a === '--config' || a === '-c') configPath = argv[++i];
-    else if (a && !a.startsWith('-') && !runId) runId = a;
+    else if (a === '--background') background = argv[++i];
+    else if (a === '--background-file') backgroundFile = argv[++i];
+    // nanoid ids can start with '-' or '_', so don't filter on leading dash here.
+    else if (a && !runId) runId = a;
   }
   if (!runId || sectionIndex === undefined || Number.isNaN(sectionIndex)) {
     process.stderr.write('Usage: topic2md regen <run-id> --section <n>\n');
     process.exit(2);
   }
+  if (background !== undefined && backgroundFile !== undefined) {
+    process.stderr.write('error: --background and --background-file are mutually exclusive\n');
+    process.exit(2);
+  }
+  if (backgroundFile) background = await readBackgroundFile(backgroundFile);
 
   const { config, source } = await loadPluginConfig({ configPath });
   process.stderr.write(`[topic2md] loaded config from ${source}\n`);
@@ -78,9 +91,23 @@ async function cmdRegen(argv: string[]): Promise<void> {
       process.stderr.write(`⚠ ${event.message}\n`);
   };
 
-  const result = await regenSection({ runId, sectionIndex }, { plugins: config, model, emit });
+  const result = await regenSection(
+    { runId, sectionIndex },
+    { plugins: config, model, emit, background },
+  );
   if (result.runId) process.stderr.write(`[topic2md] new run id: ${result.runId}\n`);
   process.stdout.write(`${result.location}\n`);
+}
+
+async function readBackgroundFile(path: string): Promise<string> {
+  try {
+    return (await readFile(path, 'utf8')).trim();
+  } catch (err) {
+    process.stderr.write(
+      `error: cannot read --background-file ${path}: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(2);
+  }
 }
 
 async function cmdRun(argv: string[]): Promise<void> {
@@ -89,10 +116,20 @@ async function cmdRun(argv: string[]): Promise<void> {
     process.stderr.write(HELP);
     process.exit(2);
   }
+  if (args.background !== undefined && args.backgroundFile !== undefined) {
+    process.stderr.write('error: --background and --background-file are mutually exclusive\n');
+    process.exit(2);
+  }
+  const background = args.backgroundFile
+    ? await readBackgroundFile(args.backgroundFile)
+    : args.background;
 
   const { config, source } = await loadPluginConfig({ configPath: args.configPath });
   process.stderr.write(`[topic2md] loaded config from ${source}\n`);
   process.stderr.write(`[topic2md] topic: ${args.topic}\n`);
+  if (background) {
+    process.stderr.write(`[topic2md] background: ${truncate(background, 80)}\n`);
+  }
 
   const printEvent = (event: WorkflowEvent) => {
     if (args.verbose) {
@@ -111,7 +148,7 @@ async function cmdRun(argv: string[]): Promise<void> {
 
   try {
     const result = await runTopic2md(
-      { topic: args.topic, model: args.model },
+      { topic: args.topic, model: args.model, background },
       { plugins: config, emit: observer.emit },
     );
     if (result.runId) process.stderr.write(`[topic2md] run id: ${result.runId}\n`);
@@ -173,6 +210,7 @@ function cmdShow(argv: string[]): void {
     const { run, stages } = full;
     process.stdout.write(`id:        ${run.id}\n`);
     process.stdout.write(`topic:     ${run.topic}\n`);
+    if (run.background) process.stdout.write(`background: ${run.background}\n`);
     process.stdout.write(`model:     ${run.model ?? '—'}\n`);
     process.stdout.write(`status:    ${run.status}\n`);
     process.stdout.write(
@@ -202,6 +240,8 @@ interface RunArgs {
   model?: string;
   configPath?: string;
   verbose: boolean;
+  background?: string;
+  backgroundFile?: string;
 }
 
 function parseRunArgs(argv: string[]): RunArgs {
@@ -220,6 +260,12 @@ function parseRunArgs(argv: string[]): RunArgs {
       case '-c':
       case '--config':
         args.configPath = argv[++i];
+        break;
+      case '--background':
+        args.background = argv[++i];
+        break;
+      case '--background-file':
+        args.backgroundFile = argv[++i];
         break;
       default:
         if (a && !a.startsWith('-') && !args.topic) args.topic = a;

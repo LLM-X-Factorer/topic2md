@@ -69,7 +69,7 @@ export async function runTopic2md(
 
   try {
     const result = await run.start({
-      inputData: { topic: input.topic, model },
+      inputData: { topic: input.topic, model, background: input.background },
       runtimeContext,
     });
 
@@ -104,7 +104,7 @@ export async function runTopic2md(
   }
 }
 
-async function disposePlugins(plugins: PluginConfig, emit: EmitFn): Promise<void> {
+export async function disposePlugins(plugins: PluginConfig, emit: EmitFn): Promise<void> {
   const all = [...plugins.sources, ...plugins.images, ...plugins.themes, ...plugins.publish];
   await Promise.all(
     all.map(async (p) => {
@@ -156,7 +156,7 @@ function initRecorder(
   }
 
   try {
-    const runId = createRun(db, { topic: input.topic, model });
+    const runId = createRun(db, { topic: input.topic, model, background: input.background });
     return { db, ownedDb, runId };
   } catch (err) {
     log(

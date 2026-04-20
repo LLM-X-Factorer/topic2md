@@ -29,13 +29,16 @@ export const sectionsStep = createStep({
       progress(emit, 'sections', `generating ${inputData.outline.sections.length} section bodies`);
       const sections = await Promise.all(
         inputData.outline.sections.map((section) =>
-          writeSection(section, inputData.sources, llm, model, emit, abortSignal),
+          writeSection(section, inputData.sources, llm, model, emit, abortSignal, {
+            background: inputData.background,
+          }),
         ),
       );
       log(emit, 'info', `sections produced ${sections.length} bodies`);
       stepEnd(emit, 'sections', started);
       return {
         topic: inputData.topic,
+        background: inputData.background,
         sources: inputData.sources,
         title: inputData.outline.title,
         digest: inputData.outline.digest,
@@ -50,6 +53,10 @@ export const sectionsStep = createStep({
 
 const MIN_SECTION_CHARS = 120;
 
+export interface WriteSectionOptions {
+  background?: string;
+}
+
 export async function writeSection(
   outline: SectionOutline,
   sources: Source[],
@@ -57,13 +64,17 @@ export async function writeSection(
   model: string,
   emit: EmitFn,
   signal?: AbortSignal,
+  opts: WriteSectionOptions = {},
 ): Promise<SectionContent> {
   const sourceList = sources
     .slice(0, 10)
     .map((s, i) => `[${i + 1}] ${s.title} — ${s.url}\n    ${s.snippet}`)
     .join('\n');
   const points = outline.points.map((p, i) => `${i + 1}. ${p}`).join('\n');
-  const prompt = `章节标题：${outline.title}\n\n要点：\n${points}\n\n可用资料：\n${sourceList}`;
+  const bg = opts.background?.trim()
+    ? `调研背景（用户身份、目的、期望的语气与深度；据此调整遣词与论证取向）：\n${opts.background.trim()}\n\n`
+    : '';
+  const prompt = `${bg}章节标题：${outline.title}\n\n要点：\n${points}\n\n可用资料：\n${sourceList}`;
 
   const first = await attempt();
   let best = first;

@@ -37,7 +37,14 @@ export function openDatabase(url: string = process.env.DATABASE_URL ?? DEFAULT_U
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   for (const sql of MIGRATIONS) db.exec(sql);
+  ensureRunsColumn(db, 'background', 'TEXT');
   return db;
+}
+
+function ensureRunsColumn(db: DatabaseType, column: string, type: string): void {
+  const rows = db.prepare(`PRAGMA table_info(runs)`).all() as { name: string }[];
+  if (rows.some((r) => r.name === column)) return;
+  db.exec(`ALTER TABLE runs ADD COLUMN ${column} ${type}`);
 }
 
 export type RunStatus = 'running' | 'success' | 'failed';
@@ -51,6 +58,7 @@ export interface RunRecord {
   location: string | null;
   sourceRunId: string | null;
   sourceStage: string | null;
+  background: string | null;
   startedAt: number;
   completedAt: number | null;
   durationMs: number | null;
@@ -65,6 +73,7 @@ interface RunRow {
   location: string | null;
   source_run_id: string | null;
   source_stage: string | null;
+  background: string | null;
   started_at: number;
   completed_at: number | null;
   duration_ms: number | null;
@@ -80,19 +89,21 @@ export interface CreateRunInput {
   model?: string;
   sourceRunId?: string;
   sourceStage?: WorkflowStep;
+  background?: string;
 }
 
 export function createRun(db: DatabaseType, input: CreateRunInput): string {
   const id = nanoid(12);
   db.prepare(
-    `INSERT INTO runs(id, topic, model, status, source_run_id, source_stage, started_at)
-     VALUES (?, ?, ?, 'running', ?, ?, ?)`,
+    `INSERT INTO runs(id, topic, model, status, source_run_id, source_stage, background, started_at)
+     VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`,
   ).run(
     id,
     input.topic,
     input.model ?? null,
     input.sourceRunId ?? null,
     input.sourceStage ?? null,
+    input.background ?? null,
     Date.now(),
   );
   return id;
@@ -180,6 +191,7 @@ function rowToRun(row: RunRow): RunRecord {
     location: row.location,
     sourceRunId: row.source_run_id,
     sourceStage: row.source_stage,
+    background: row.background,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     durationMs: row.duration_ms,

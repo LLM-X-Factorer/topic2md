@@ -64,11 +64,15 @@ export function perplexitySource(options: PerplexitySourceOptions): SourcePlugin
     name: 'perplexity',
     async research(topic: string, reqOpts?: ResearchOptions): Promise<Source[]> {
       const maxResults = reqOpts?.maxResults ?? options.maxResults ?? 8;
+      const background = reqOpts?.background?.trim();
+      const userContent = background
+        ? `话题：${topic}\n\n调研背景（帮你判断读者是谁、想要什么角度的资料）：\n${background}`
+        : topic;
       const body = {
         model: options.model ?? DEFAULT_MODEL,
         messages: [
           { role: 'system', content: options.systemPrompt ?? DEFAULT_SYSTEM },
-          { role: 'user', content: topic },
+          { role: 'user', content: userContent },
         ],
         search_recency_filter: options.searchRecencyFilter,
         search_domain_filter: options.searchDomainFilter,

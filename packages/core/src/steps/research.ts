@@ -21,11 +21,16 @@ export const researchStep = createStep({
       progress(
         emit,
         'research',
-        `querying ${pool.length} source${pool.length === 1 ? '' : 's'} (${pool.map((s) => s.name).join(', ')}) for topic: ${inputData.topic}`,
+        `querying ${pool.length} source${pool.length === 1 ? '' : 's'} (${pool.map((s) => s.name).join(', ')}) for topic: ${inputData.topic}${inputData.background ? ` (with background)` : ''}`,
       );
 
       const results = await Promise.allSettled(
-        pool.map((src) => src.research(inputData.topic, { signal: abortSignal })),
+        pool.map((src) =>
+          src.research(inputData.topic, {
+            signal: abortSignal,
+            background: inputData.background,
+          }),
+        ),
       );
       const perSource = results.map((r, i) => annotate(pool[i] as SourcePlugin, r, emit));
       const merged = mergeSources(perSource);
@@ -45,7 +50,7 @@ export const researchStep = createStep({
         `research merged ${merged.length} unique sources from ${pool.length} plugin${pool.length === 1 ? '' : 's'}`,
       );
       stepEnd(emit, 'research', started);
-      return { topic: inputData.topic, sources: merged };
+      return { topic: inputData.topic, background: inputData.background, sources: merged };
     } catch (err) {
       stepError(emit, 'research', err);
       throw err;

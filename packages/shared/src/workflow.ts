@@ -14,6 +14,12 @@ export type WorkflowStep = (typeof WORKFLOW_STEPS)[number];
 export interface WorkflowInput {
   topic: string;
   model?: string;
+  /**
+   * Freeform context about the user, their goal, and the angle they want the
+   * article to take. Threaded through research / outline / sections prompts
+   * so the pipeline doesn't drift from the user's actual intent.
+   */
+  background?: string;
 }
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';

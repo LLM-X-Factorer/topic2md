@@ -16,6 +16,7 @@ import type {
 import { createLLM, type LLM } from './llm.js';
 import { noopEmit, type EmitFn } from './logger.js';
 import { toArticle } from './markdown.js';
+import { disposePlugins } from './runner.js';
 import {
   completeRun,
   createRun,
@@ -39,6 +40,11 @@ export interface RegenSectionOptions {
   emit?: EmitFn;
   signal?: AbortSignal;
   model?: string;
+  /**
+   * Override the background context recorded on the source run. `undefined`
+   * reuses the stored background; an empty string clears it.
+   */
+  background?: string;
   record?: boolean | DatabaseType;
   databaseUrl?: string;
 }
@@ -74,6 +80,8 @@ export async function regenSection(
     }
 
     const model = options.model ?? source.run.model ?? llm.defaultModel;
+    const effectiveBackground =
+      options.background !== undefined ? options.background : (source.run.background ?? undefined);
     const { research, outline, sections, images, assemble } = requireStages(source.stages);
 
     if (input.sectionIndex < 0 || input.sectionIndex >= outline.outline.sections.length) {
@@ -88,6 +96,7 @@ export async function regenSection(
           model,
           sourceRunId: source.run.id,
           sourceStage: 'sections',
+          background: effectiveBackground,
         })
       : null;
 
@@ -107,6 +116,7 @@ export async function regenSection(
       model,
       emit,
       options.signal,
+      { background: effectiveBackground },
     );
 
     const nextSections: SectionContent[] = sections.sections.map((s, i) =>
@@ -114,6 +124,7 @@ export async function regenSection(
     );
     const sectionsOutput: SectionsOutput = {
       topic: sections.topic,
+      background: effectiveBackground,
       sources: sections.sources,
       title: sections.title,
       digest: sections.digest,
@@ -159,6 +170,7 @@ export async function regenSection(
       article,
     };
   } finally {
+    await disposePlugins(options.plugins, emit);
     if (ownedDb && db) db.close();
   }
 }

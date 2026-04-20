@@ -13,6 +13,7 @@ type StreamEvent =
 
 export default function TopicRunner({ models }: { models: string[] }) {
   const [topic, setTopic] = useState('');
+  const [background, setBackground] = useState('');
   const [model, setModel] = useState(models[0]);
   const [events, setEvents] = useState<WorkflowEvent[]>([]);
   const [markdown, setMarkdown] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export default function TopicRunner({ models }: { models: string[] }) {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ topic, model }),
+        body: JSON.stringify({ topic, model, background: background.trim() || undefined }),
         signal: ctrl.signal,
       });
       if (!res.body) throw new Error('no response body');
@@ -88,7 +89,7 @@ export default function TopicRunner({ models }: { models: string[] }) {
       setRunning(false);
       abortRef.current = null;
     }
-  }, [topic, model, running]);
+  }, [topic, model, background, running]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -196,6 +197,39 @@ export default function TopicRunner({ models }: { models: string[] }) {
           </button>
         )}
       </div>
+
+      <details style={{ marginTop: 12 }} open={background.length > 0}>
+        <summary
+          style={{
+            cursor: 'pointer',
+            fontSize: 13,
+            color: 'var(--muted)',
+            userSelect: 'none',
+          }}
+        >
+          调研背景（可选）—— 你的身份、目的、想要的切入角度
+        </summary>
+        <textarea
+          value={background}
+          onChange={(e) => setBackground(e.target.value)}
+          placeholder="例：我是算法工程师，想弄清楚这次发布的架构改动细节和训练数据来源，用来给团队做内部分享。"
+          disabled={running}
+          rows={3}
+          style={{
+            marginTop: 8,
+            width: '100%',
+            padding: '10px 12px',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            background: 'var(--panel)',
+            color: 'var(--fg)',
+            fontFamily: 'inherit',
+            fontSize: 14,
+            resize: 'vertical',
+            boxSizing: 'border-box',
+          }}
+        />
+      </details>
 
       {events.length > 0 && (
         <div

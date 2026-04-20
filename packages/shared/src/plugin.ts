@@ -16,6 +16,12 @@ export interface BasePlugin {
 export interface ResearchOptions {
   maxResults?: number;
   signal?: AbortSignal;
+  /**
+   * User-provided background context (role, goal, desired angle). Plugins
+   * that accept natural-language queries can fold this into the prompt;
+   * plugins that only accept search strings can ignore it.
+   */
+  background?: string;
 }
 
 export interface SourcePlugin extends BasePlugin {

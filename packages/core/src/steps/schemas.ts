@@ -10,17 +10,20 @@ import {
 export const WorkflowInputSchema = z.object({
   topic: z.string().min(1),
   model: z.string().optional(),
+  background: z.string().optional(),
 });
 export type WorkflowInputValue = z.infer<typeof WorkflowInputSchema>;
 
 export const ResearchOutputSchema = z.object({
   topic: z.string(),
+  background: z.string().optional(),
   sources: z.array(SourceSchema),
 });
 export type ResearchOutput = z.infer<typeof ResearchOutputSchema>;
 
 export const OutlineOutputSchema = z.object({
   topic: z.string(),
+  background: z.string().optional(),
   sources: z.array(SourceSchema),
   outline: OutlineSchema,
 });
@@ -28,6 +31,7 @@ export type OutlineOutput = z.infer<typeof OutlineOutputSchema>;
 
 export const SectionsOutputSchema = z.object({
   topic: z.string(),
+  background: z.string().optional(),
   sources: z.array(SourceSchema),
   title: z.string(),
   digest: z.string(),

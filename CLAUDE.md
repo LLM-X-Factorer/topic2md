@@ -25,6 +25,17 @@
 
 每次 `runTopic2md` 默认写 SQLite（`DATABASE_URL=sqlite:<repo>/data.db`，anchored in `plugins.config.ts`）：`runs` 表存一条元数据，`run_stages` 存每步 Mastra output。CLI 读这个库提供 `list` / `show` / `regen` 子命令。`regenSection` 基于存的 research+outline+sections 只重跑一节 + 重 assemble + 重 publish，新 run 带 `source_run_id` 指回原始。
 
+`runs` 表靠 `ensureRunsColumn` 做 idempotent 的 `ALTER TABLE ADD COLUMN` 迁移；要加新列就在 `openDatabase` 末尾补一行调用，别改已有 `CREATE TABLE` DDL（老库存在、会被跳过）。
+
+## 调研背景（background）
+
+`WorkflowInput.background`（可选自由文本）贯穿 research → outline → sections 三步，约束"用户是谁 / 目的 / 切入角度"，防止内容跑偏：
+
+- `SourcePlugin.research` 收到 `ResearchOptions.background`。Perplexity 把它拼进 user message；Tavily 故意忽略（`query` 是检索串，塞长文本伤召回）。新 source plugin 接入时自行决定用不用。
+- outline / sections 的 user prompt 在有 background 时条件拼接一段"调研背景：..."；system prompt 不动。
+- 持久化在 `runs.background`；`regen` 默认复用 source run 的 background，`options.background` 不 undefined 就覆盖（传空串能清空）。
+- CLI：`--background <text>` 或 `--background-file <path>`（二选一），`run` 和 `regen` 都支持；Web UI 用 `<details>` 折叠的 textarea。
+
 ## 模型现状（2026-04，已切 `mode: 'json'`）
 
 | 模型                              | 状态              | 说明                                                                                   |

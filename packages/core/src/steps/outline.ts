@@ -24,7 +24,7 @@ export const outlineStep = createStep({
     const started = stepStart(emit, 'outline');
     try {
       progress(emit, 'outline', `drafting outline with ${inputData.sources.length} sources`);
-      const prompt = renderPrompt(inputData.topic, inputData.sources);
+      const prompt = renderPrompt(inputData.topic, inputData.sources, inputData.background);
 
       const attempt = () =>
         llm.generate({
@@ -72,7 +72,12 @@ export const outlineStep = createStep({
       }
       log(emit, 'info', `outline "${outline.title}" with ${outline.sections.length} sections`);
       stepEnd(emit, 'outline', started);
-      return { topic: inputData.topic, sources: inputData.sources, outline };
+      return {
+        topic: inputData.topic,
+        background: inputData.background,
+        sources: inputData.sources,
+        outline,
+      };
     } catch (err) {
       stepError(emit, 'outline', err);
       throw err;
@@ -103,10 +108,13 @@ function backfillImageHint(section: SectionOutline): SectionOutline {
   };
 }
 
-function renderPrompt(topic: string, sources: Source[]): string {
+function renderPrompt(topic: string, sources: Source[], background?: string): string {
   const sourceList = sources
     .slice(0, 12)
     .map((s, i) => `${i + 1}. ${s.title}\n   ${s.url}\n   ${s.snippet}`)
     .join('\n');
-  return `话题：${topic}\n\n研究资料：\n${sourceList}`;
+  const bg = background?.trim()
+    ? `\n\n调研背景（用户身份、目的、切入角度；用来约束 title/digest/sections 的选题与受众）：\n${background.trim()}`
+    : '';
+  return `话题：${topic}${bg}\n\n研究资料：\n${sourceList}`;
 }

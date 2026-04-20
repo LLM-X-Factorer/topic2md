@@ -38,6 +38,11 @@ export function tavilySource(options: TavilySourceOptions): SourcePlugin {
   return {
     name: 'tavily',
     async research(topic: string, reqOpts?: ResearchOptions): Promise<Source[]> {
+      // Tavily's `query` is a retrieval search string, not natural language,
+      // so pasting a multi-sentence background into it hurts recall. We
+      // accept the option for interface parity but deliberately ignore it
+      // here; upstream LLM steps (outline/sections) still see the background.
+      void reqOpts?.background;
       const body = {
         query: topic,
         search_depth: options.searchDepth ?? 'advanced',
