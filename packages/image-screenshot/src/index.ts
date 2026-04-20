@@ -121,9 +121,10 @@ export function screenshotImage(options: ScreenshotImageOptions = {}): ImagePlug
   }
 }
 
+// Honour the caller's ordering — core's images step greedy-assigns one
+// distinct source per section and expects the chosen one at position 0.
 function pickSource(sources: Source[]): Source | null {
-  const sorted = [...sources].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  return sorted[0] ?? null;
+  return sources[0] ?? null;
 }
 
 const OG_META_KEYS = [
