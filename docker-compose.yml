@@ -1,0 +1,17 @@
+services:
+  topic2md:
+    build:
+      context: .
+    image: topic2md:latest
+    ports:
+      - '3000:3000'
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:?set TAVILY_API_KEY}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-openrouter/anthropic/claude-sonnet-4-6}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+    volumes:
+      - ./out:/app/out
+    restart: unless-stopped
