@@ -23,7 +23,7 @@ export const imagesStep = createStep({
       progress(emit, 'images', `resolving images for ${inputData.sections.length} sections`);
 
       const assignments = assignSources(inputData.sections, inputData.sources);
-      const sections = await Promise.all(
+      const sectionsRaw = await Promise.all(
         inputData.sections.map((section, i) =>
           resolveImages(
             section,
@@ -35,6 +35,7 @@ export const imagesStep = createStep({
           ),
         ),
       );
+      const sections = dedupeAndFilterImages(sectionsRaw, emit);
       const total = sections.reduce((n, s) => n + s.images.length, 0);
       log(emit, 'info', `images attached: ${total}`);
       stepEnd(emit, 'images', started);
@@ -127,4 +128,48 @@ function keywordAffinity(source: Source, keywords: string[]): number {
   let n = 0;
   for (const k of keywords) if (hay.includes(k)) n++;
   return n;
+}
+
+// Filenames that usually mean "default social-card / sharing icon" rather
+// than real content imagery. We strip these after the images step so the
+// final article never uses the same station-logo placeholder everywhere.
+const PLACEHOLDER_PATTERNS: RegExp[] = [
+  /\/shareicons?\//i,
+  /docusaurus-social-card/i,
+  /\/(og[-_]?default|default[-_]?og)[.-]/i,
+  /\/social[-_]?share[-_]/i,
+];
+
+function isPlaceholderUrl(url: string): boolean {
+  return PLACEHOLDER_PATTERNS.some((re) => re.test(url));
+}
+
+export function dedupeAndFilterImages(sections: SectionContent[], emit: EmitFn): SectionContent[] {
+  const seen = new Set<string>();
+  let placeholders = 0;
+  let duplicates = 0;
+
+  const kept = sections.map((section) => {
+    const filteredImages = section.images.filter((img) => {
+      if (isPlaceholderUrl(img.url)) {
+        placeholders++;
+        return false;
+      }
+      if (seen.has(img.url)) {
+        duplicates++;
+        return false;
+      }
+      seen.add(img.url);
+      return true;
+    });
+    return { ...section, images: filteredImages };
+  });
+
+  if (placeholders > 0) {
+    log(emit, 'info', `images: dropped ${placeholders} placeholder / shareicon image(s)`);
+  }
+  if (duplicates > 0) {
+    log(emit, 'info', `images: dropped ${duplicates} duplicate image URL(s)`);
+  }
+  return kept;
 }
