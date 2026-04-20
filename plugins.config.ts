@@ -10,6 +10,12 @@ import { filePublish } from '@topic2md/publish-file';
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(ROOT, 'out');
 
+// Same fix for the SQLite run DB — otherwise web-triggered runs land in
+// apps/web/data.db and `topic2md list` never sees them.
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = `sqlite:${resolve(ROOT, 'data.db')}`;
+}
+
 const config: PluginConfig = {
   sources: [
     tavilySource({
