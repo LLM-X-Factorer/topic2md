@@ -14,7 +14,6 @@ export async function runSmoke(topic = 'DeepSeek V3.2 发布'): Promise<{
       llm: createMockLLM(),
       emit: (event) => {
         if (event.type === 'step.start' || event.type === 'step.end') {
-          // eslint-disable-next-line no-console
           console.log(`[smoke] ${event.type} ${event.step}`);
         }
       },

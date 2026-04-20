@@ -21,9 +21,18 @@ export const imagesStep = createStep({
         return inputData;
       }
       progress(emit, 'images', `resolving images for ${inputData.sections.length} sections`);
+
+      const assignments = assignSources(inputData.sections, inputData.sources);
       const sections = await Promise.all(
-        inputData.sections.map((section) =>
-          resolveImages(section, inputData.sources, inputData.topic, plugs, emit, abortSignal),
+        inputData.sections.map((section, i) =>
+          resolveImages(
+            section,
+            reorderWithAssigned(inputData.sources, assignments[i] ?? null),
+            inputData.topic,
+            plugs,
+            emit,
+            abortSignal,
+          ),
         ),
       );
       const total = sections.reduce((n, s) => n + s.images.length, 0);
@@ -45,7 +54,7 @@ async function resolveImages(
   emit: EmitFn,
   signal?: AbortSignal,
 ): Promise<SectionContent> {
-  if (!section.imageHint || plugs.length === 0) return section;
+  if (!section.imageHint || plugs.length === 0 || sources.length === 0) return section;
   const request = { section, sources, topic };
   for (const plug of plugs) {
     try {
@@ -62,4 +71,60 @@ async function resolveImages(
     }
   }
   return section;
+}
+
+// Greedy dedupe with keyword-affinity tie-breaker. When sections outnumber
+// sources we fall back to round-robin rather than leaving later sections
+// without an image.
+export function assignSources(
+  sections: Pick<SectionContent, 'title' | 'points' | 'imageHint'>[],
+  sources: Source[],
+): (Source | null)[] {
+  if (sources.length === 0) return sections.map(() => null);
+  const used = new Set<string>();
+  const assignments: (Source | null)[] = [];
+
+  for (const section of sections) {
+    const keywords = sectionKeywords(section);
+    const ranked = [...sources].sort((a, b) => {
+      const diff = keywordAffinity(b, keywords) - keywordAffinity(a, keywords);
+      if (diff !== 0) return diff;
+      return (b.score ?? 0) - (a.score ?? 0);
+    });
+    const pick = ranked.find((s) => !used.has(s.url)) ?? ranked[0] ?? null;
+    if (pick) used.add(pick.url);
+    assignments.push(pick);
+  }
+  return assignments;
+}
+
+function reorderWithAssigned(sources: Source[], assigned: Source | null): Source[] {
+  if (!assigned) return sources;
+  return [assigned, ...sources.filter((s) => s.url !== assigned.url)];
+}
+
+function sectionKeywords(
+  section: Pick<SectionContent, 'title' | 'points' | 'imageHint'>,
+): string[] {
+  const tokens = new Set<string>();
+  for (const src of [section.title, ...(section.imageHint?.keywords ?? []), ...section.points]) {
+    for (const t of tokenize(src)) tokens.add(t);
+  }
+  return [...tokens];
+}
+
+function tokenize(input: string): string[] {
+  return input
+    .toLowerCase()
+    .split(/[\s,.;:!?()[\]（）【】、，。；：！？/\\"'`~]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 2);
+}
+
+function keywordAffinity(source: Source, keywords: string[]): number {
+  if (keywords.length === 0) return 0;
+  const hay = `${source.title} ${source.snippet}`.toLowerCase();
+  let n = 0;
+  for (const k of keywords) if (hay.includes(k)) n++;
+  return n;
 }
