@@ -138,6 +138,11 @@ export function createLLM(opts: LLMOptions = {}): LLM {
             prompt,
             abortSignal: signal,
             maxTokens,
+            // OpenRouter-routed providers (MiniMax, GLM, …) have been
+            // returning malformed JSON via the tool-call path ~20% of the
+            // time. JSON mode (response_format=json_object) has been
+            // dramatically more reliable in practice.
+            mode: 'json',
           }),
         );
         const usage = normalizeUsage(res.usage);
