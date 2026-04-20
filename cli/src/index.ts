@@ -3,6 +3,7 @@ import {
   getRun,
   listRuns,
   openDatabase,
+  regenSection,
   runTopic2md,
 } from '@topic2md/core';
 import type { WorkflowEvent } from '@topic2md/shared';
@@ -14,6 +15,7 @@ Usage:
   topic2md "<topic>" [--model <id>] [--config <path>] [--verbose]
   topic2md list [--limit <n>] [--status <running|success|failed>]
   topic2md show <run-id> [--markdown]
+  topic2md regen <run-id> --section <n> [--model <id>] [--config <path>]
 
 Options:
   --model, -m     Model id (e.g. openrouter/anthropic/claude-sonnet-4-6)
@@ -22,6 +24,7 @@ Options:
   --limit <n>     list: max rows to show (default 20)
   --status <s>    list: filter by status
   --markdown      show: print the generated markdown body
+  --section <n>   regen: 0-based section index to rewrite
   --help, -h      Show this help
 
 Env:
@@ -40,8 +43,44 @@ export async function main(argv: string[]): Promise<void> {
 
   if (first === 'list') return cmdList(rest);
   if (first === 'show') return cmdShow(rest);
+  if (first === 'regen') return cmdRegen(rest);
 
   return cmdRun(argv);
+}
+
+async function cmdRegen(argv: string[]): Promise<void> {
+  let runId: string | undefined;
+  let sectionIndex: number | undefined;
+  let model: string | undefined;
+  let configPath: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--section') sectionIndex = Number(argv[++i]);
+    else if (a === '--model' || a === '-m') model = argv[++i];
+    else if (a === '--config' || a === '-c') configPath = argv[++i];
+    else if (a && !a.startsWith('-') && !runId) runId = a;
+  }
+  if (!runId || sectionIndex === undefined || Number.isNaN(sectionIndex)) {
+    process.stderr.write('Usage: topic2md regen <run-id> --section <n>\n');
+    process.exit(2);
+  }
+
+  const { config, source } = await loadPluginConfig({ configPath });
+  process.stderr.write(`[topic2md] loaded config from ${source}\n`);
+  process.stderr.write(`[topic2md] regen run=${runId} section=${sectionIndex}\n`);
+
+  const emit = (event: WorkflowEvent) => {
+    if (event.type === 'step.start') process.stderr.write(`→ ${event.step}\n`);
+    else if (event.type === 'step.end')
+      process.stderr.write(`✓ ${event.step} (${event.durationMs}ms)\n`);
+    else if (event.type === 'step.error') process.stderr.write(`✗ ${event.step}: ${event.error}\n`);
+    else if (event.type === 'log' && (event.level === 'warn' || event.level === 'error'))
+      process.stderr.write(`⚠ ${event.message}\n`);
+  };
+
+  const result = await regenSection({ runId, sectionIndex }, { plugins: config, model, emit });
+  if (result.runId) process.stderr.write(`[topic2md] new run id: ${result.runId}\n`);
+  process.stdout.write(`${result.location}\n`);
 }
 
 async function cmdRun(argv: string[]): Promise<void> {

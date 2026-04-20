@@ -19,6 +19,12 @@ export {
   type RunRecord,
   type RunStatus,
 } from './persistence.js';
+export {
+  regenSection,
+  type RegenSectionInput,
+  type RegenSectionOptions,
+  type RegenSectionResult,
+} from './regen.js';
 export { createTopic2mdWorkflow, type Topic2mdWorkflow } from './workflow.js';
 export { createLLM, LLMNotConfiguredError, type LLM, type LLMOptions } from './llm.js';
 export {

@@ -50,7 +50,7 @@ export const sectionsStep = createStep({
 
 const MIN_SECTION_CHARS = 120;
 
-async function writeSection(
+export async function writeSection(
   outline: SectionOutline,
   sources: Source[],
   llm: ReturnType<typeof getRuntime>['llm'],

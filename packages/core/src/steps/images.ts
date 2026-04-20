@@ -46,7 +46,7 @@ export const imagesStep = createStep({
   },
 });
 
-async function resolveImages(
+export async function resolveImages(
   section: SectionContent,
   sources: Source[],
   topic: string,
@@ -73,6 +73,11 @@ async function resolveImages(
   return section;
 }
 
+export function reorderWithAssigned(sources: Source[], assigned: Source | null): Source[] {
+  if (!assigned) return sources;
+  return [assigned, ...sources.filter((s) => s.url !== assigned.url)];
+}
+
 // Greedy dedupe with keyword-affinity tie-breaker. When sections outnumber
 // sources we fall back to round-robin rather than leaving later sections
 // without an image.
@@ -96,11 +101,6 @@ export function assignSources(
     assignments.push(pick);
   }
   return assignments;
-}
-
-function reorderWithAssigned(sources: Source[], assigned: Source | null): Source[] {
-  if (!assigned) return sources;
-  return [assigned, ...sources.filter((s) => s.url !== assigned.url)];
 }
 
 function sectionKeywords(
