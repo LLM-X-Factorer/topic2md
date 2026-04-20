@@ -65,63 +65,93 @@ async function writeSection(
   const points = outline.points.map((p, i) => `${i + 1}. ${p}`).join('\n');
   const prompt = `章节标题：${outline.title}\n\n要点：\n${points}\n\n可用资料：\n${sourceList}`;
 
-  let res = await callLLM();
-  let markdown = res.object.markdown.trim();
+  const first = await attempt();
+  let best = first;
 
-  if (isSuspect(markdown, res.finishReason)) {
-    log(
-      emit,
-      'warn',
-      `section "${outline.id}" returned ${markdown.length} chars (finishReason=${res.finishReason}); retrying once.`,
-    );
-    try {
-      const retry = await callLLM();
-      const retryMd = retry.object.markdown.trim();
-      if (retryMd.length > markdown.length) {
-        res = retry;
-        markdown = retryMd;
-      }
-    } catch (err) {
+  if (!first.ok || isSuspect(first.markdown, first.finishReason)) {
+    if (!first.ok) {
       log(
         emit,
         'warn',
-        `section "${outline.id}" retry failed (${err instanceof Error ? err.message : String(err)}); keeping first attempt.`,
+        `section "${outline.id}" first attempt failed (${first.error}); retrying once.`,
+      );
+    } else {
+      log(
+        emit,
+        'warn',
+        `section "${outline.id}" returned ${first.markdown.length} chars (finishReason=${first.finishReason}); retrying once.`,
       );
     }
-    if (isSuspect(markdown, res.finishReason)) {
+    const retry = await attempt();
+    best = pickBest(first, retry);
+    if (!best.ok) {
       log(
         emit,
         'warn',
-        `section "${outline.id}" still short after retry (${markdown.length} chars); keeping partial output.`,
+        `section "${outline.id}" both attempts failed (${best.error}); emitting empty section.`,
+      );
+    } else if (isSuspect(best.markdown, best.finishReason)) {
+      log(
+        emit,
+        'warn',
+        `section "${outline.id}" still short after retry (${best.markdown.length} chars); keeping partial output.`,
       );
     }
   }
 
-  const citations = dedupe(
-    res.object.citationIndices
-      .map((n) => sources[n - 1]?.url)
-      .filter((u): u is string => typeof u === 'string'),
-  );
+  const citations = best.ok
+    ? dedupe(
+        best.citationIndices
+          .map((n) => sources[n - 1]?.url)
+          .filter((u): u is string => typeof u === 'string'),
+      )
+    : [];
   return {
     id: outline.id,
     title: outline.title,
     points: outline.points,
     imageHint: outline.imageHint,
-    markdown,
+    markdown: best.ok ? best.markdown : '',
     images: [],
     citations,
   };
 
-  function callLLM() {
-    return llm.generate({
-      schema: SectionWriteSchema,
-      prompt,
-      system: SECTION_SYSTEM,
-      model,
-      signal,
-      maxTokens: 4096,
-    });
+  async function attempt(): Promise<SectionAttempt> {
+    try {
+      const res = await llm.generate({
+        schema: SectionWriteSchema,
+        prompt,
+        system: SECTION_SYSTEM,
+        model,
+        signal,
+        maxTokens: 4096,
+      });
+      return {
+        ok: true,
+        markdown: res.object.markdown.trim(),
+        citationIndices: res.object.citationIndices,
+        finishReason: res.finishReason,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
+}
+
+type SectionAttempt =
+  | { ok: true; markdown: string; citationIndices: number[]; finishReason: string }
+  | { ok: false; error: string };
+
+function pickBest(a: SectionAttempt, b: SectionAttempt): SectionAttempt {
+  if (!a.ok && !b.ok) return a;
+  if (!a.ok) return b;
+  if (!b.ok) return a;
+  if (a.finishReason === 'length' && b.finishReason !== 'length') return b;
+  if (b.finishReason === 'length' && a.finishReason !== 'length') return a;
+  return b.markdown.length > a.markdown.length ? b : a;
 }
 
 // Only two signals mean the body is probably broken:
