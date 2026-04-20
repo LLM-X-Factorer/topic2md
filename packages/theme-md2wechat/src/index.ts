@@ -67,9 +67,7 @@ export function themeMd2wechat(options: ThemeMd2wechatOptions): ThemePlugin {
 
       const requested = options.theme;
       const theme =
-        requested && available.includes(requested)
-          ? requested
-          : (available[0] as string);
+        requested && available.includes(requested) ? requested : (available[0] as string);
 
       const enriched: Frontmatter = {
         ...frontmatter,
