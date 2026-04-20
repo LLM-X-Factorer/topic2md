@@ -334,5 +334,13 @@ function formatEvent(ev: WorkflowEvent): string {
       return `[${ev.level}] ${ev.message}`;
     case 'progress':
       return `· ${ev.step}: ${ev.message}`;
+    case 'generation.start':
+      return `  ↳ ${ev.kind} → ${ev.model}`;
+    case 'generation.end': {
+      const tokens = ev.usage?.totalTokens !== undefined ? ` ${ev.usage.totalTokens}t` : '';
+      return `  ↳ ${ev.model} (${ev.durationMs}ms${tokens})`;
+    }
+    case 'generation.fallback':
+      return `  ↳ fallback ${ev.failedModel} → ${ev.nextModel}`;
   }
 }

@@ -23,11 +23,16 @@ interface LangfuseLike {
 
 interface LangfuseTraceLike {
   span(input: Record<string, unknown>): LangfuseSpanLike;
+  generation(input: Record<string, unknown>): LangfuseGenerationLike;
   update(input: Record<string, unknown>): void;
   event(input: Record<string, unknown>): void;
 }
 
 interface LangfuseSpanLike {
+  end(input?: Record<string, unknown>): void;
+}
+
+interface LangfuseGenerationLike {
   end(input?: Record<string, unknown>): void;
 }
 
@@ -65,6 +70,7 @@ export async function createLangfuseObserver(
   });
 
   const spans = new Map<WorkflowStep, LangfuseSpanLike>();
+  const generations = new Map<string, { gen: LangfuseGenerationLike; model: string }>();
 
   const emit: EmitFn = (event: WorkflowEvent) => {
     passthrough?.(event);
@@ -99,6 +105,44 @@ export async function createLangfuseObserver(
               ? event.message
               : { level: event.level, message: event.message },
           startTime: new Date(event.at),
+        });
+        return;
+      }
+      case 'generation.start': {
+        const gen = trace.generation({
+          name: `${event.kind}:${event.model}`,
+          model: event.model,
+          startTime: new Date(event.at),
+        });
+        generations.set(event.id, { gen, model: event.model });
+        return;
+      }
+      case 'generation.end': {
+        const record = generations.get(event.id);
+        if (!record) return;
+        record.gen.end({
+          endTime: new Date(event.at),
+          usage: event.usage,
+          metadata: {
+            durationMs: event.durationMs,
+            finishReason: event.finishReason,
+            model: event.model,
+          },
+          level: event.finishReason === 'error' ? 'ERROR' : undefined,
+        });
+        generations.delete(event.id);
+        return;
+      }
+      case 'generation.fallback': {
+        trace.event({
+          name: 'generation.fallback',
+          input: {
+            failedModel: event.failedModel,
+            nextModel: event.nextModel,
+            error: event.error,
+          },
+          startTime: new Date(event.at),
+          level: 'WARNING',
         });
         return;
       }

@@ -240,6 +240,14 @@ function summarizeEvent(event: WorkflowEvent): string {
       return `[${event.level}] ${event.message}`;
     case 'progress':
       return `${event.step} · ${event.message}`;
+    case 'generation.start':
+      return `${event.kind} → ${event.model}`;
+    case 'generation.end':
+      return `${event.model} ${event.durationMs}ms ${event.finishReason ?? ''} ${
+        event.usage?.totalTokens !== undefined ? `${event.usage.totalTokens}t` : ''
+      }`;
+    case 'generation.fallback':
+      return `fallback ${event.failedModel} → ${event.nextModel}: ${event.error}`;
   }
 }
 

@@ -27,6 +27,11 @@ export interface RunTopic2mdOptions {
   signal?: AbortSignal;
   model?: string;
   /**
+   * Additional models to retry against if `model` fails. Only applied when
+   * `llm` is not supplied (since a custom LLM owns its own retry policy).
+   */
+  fallbackModels?: string[];
+  /**
    * Persist this run to SQLite. `true` uses `DATABASE_URL` / the default
    * `sqlite:./data.db`. Pass an open `DatabaseType` to reuse an existing
    * handle (e.g. from a long-lived web server). Pass `false` to skip.
@@ -44,9 +49,15 @@ export async function runTopic2md(
   options: RunTopic2mdOptions,
 ): Promise<RunTopic2mdResult> {
   assertPluginConfig(options.plugins);
-  const llm = options.llm ?? createLLM({ defaultModel: options.model });
-  const model = options.model ?? input.model ?? llm.defaultModel;
   const emit = options.emit ?? noopEmit;
+  const llm =
+    options.llm ??
+    createLLM({
+      defaultModel: options.model,
+      fallbackModels: options.fallbackModels,
+      emit,
+    });
+  const model = options.model ?? input.model ?? llm.defaultModel;
 
   const { db, ownedDb, runId } = initRecorder(options, input, model, emit);
 
