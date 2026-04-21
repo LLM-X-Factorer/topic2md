@@ -4,6 +4,9 @@
 
 `topic2md` 把一句话话题（例：「DeepSeek V3.2 发布，有什么技术亮点」）端到端编译成带 frontmatter、配图与引用的 markdown 文档。它定位为 [md2wechat](https://github.com/LLM-X-Factorer/md2wechat) 的上游生成器，但完全独立开源，不绑定任何下游。
 
+> English README: [`README.en.md`](./README.en.md)
+> 想贡献？看 [`CONTRIBUTING.md`](./CONTRIBUTING.md)；想报安全问题？看 [`SECURITY.md`](./SECURITY.md)。
+
 ## 架构
 
 ```
@@ -225,6 +228,11 @@ services:
 - `p0-blocker` / `p1-important` / `p2-later` 标优先级
 - `area/web` / `area/core` / `area/plugin` / `area/cli` / `area/infra` 标区域
 - 提新需求或 bug 请直接开 issue，PR 里用 `Closes #N` 关联
+
+## 贡献 / 安全问题
+
+- 开发约定、架构红线、commit/PR 规范 → [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- 安全漏洞走私密渠道，**不要直接开 public issue** → [`SECURITY.md`](./SECURITY.md)
 
 ## 许可证
 
