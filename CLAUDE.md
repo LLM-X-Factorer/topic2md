@@ -119,4 +119,4 @@ gh issue view <n>
 - 区域：`area/web` / `area/core` / `area/plugin` / `area/cli` / `area/infra`
 - 类型：默认 `bug` / `enhancement`
 
-在 commit message 结尾写 `Closes #N`（或多条 `Closes #1 #2 #20`）即可自动关单。红线是：任何新的外部耦合一律走 plugin 通道，不往 `packages/core` 里加 `import`，想加新源 / 发布目的地就开新 `packages/<source|image|theme|publish>-<name>` 包。
+在 commit message 结尾写 `Closes #N` 自动关单。**多条必须每个 issue 自带关键字**：`Closes #1, closes #2, closes #3`（逗号分隔）或换行分多行——`Closes #1 #2 #3` 这种空格并列只认第一个（踩过，别再踩）。红线是：任何新的外部耦合一律走 plugin 通道，不往 `packages/core` 里加 `import`，想加新源 / 发布目的地就开新 `packages/<source|image|theme|publish>-<name>` 包。
