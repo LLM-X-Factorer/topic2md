@@ -236,20 +236,9 @@ services:
 Images are also auto-published to GitHub Container Registry from `main` —
 `ghcr.io/llm-x-factorer/topic2md:main`.
 
-## Sizing a deployment
-
-The workflow is a long synchronous request (60-200s per run) plus Chromium for
-image screenshotting. **Serverless is not a fit** — Vercel / Cloudflare
-Workers / Netlify all have function-timeout limits shorter than a single run.
-
-| Use case                        | Shape                                                                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Single-user self-host           | 1 vCPU / 2 GB RAM / 20 GB SSD                                                                                          |
-| Small team, 2-5 concurrent runs | 2-4 vCPU / 4-8 GB RAM / 40 GB SSD                                                                                      |
-| Public SaaS                     | Queue + worker pool. Add rate limits, per-user quotas, and a separate Redis. Don't expose `runTopic2md` synchronously. |
-
-Monthly cost ballpark for the self-host shape: **$15-30** total (VPS + API
-usage at one article/day).
+**Full deployment guide** (sizing tables, API-key budget, reverse proxy with
+TLS, persistent volumes, hardening) — see
+[`docs/deployment.md`](./docs/deployment.md).
 
 ## Integrating with md2wechat (optional)
 
@@ -272,6 +261,8 @@ Everything lives in [GitHub Issues](https://github.com/LLM-X-Factorer/topic2md/i
 - Priority: `p0-blocker` / `p1-important` / `p2-later`
 - Area: `area/web` / `area/core` / `area/plugin` / `area/cli` / `area/infra`
 - Type: `bug` / `enhancement` / `help wanted` / `good first issue`
+
+Release notes and user-facing changes are in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Contributing
 

@@ -196,21 +196,9 @@ docker run --rm -p 3000:3000 \
   topic2md
 ```
 
-最小 docker-compose 参考：
+或直接拉 GHCR 上的已构建镜像：`ghcr.io/llm-x-factorer/topic2md:main`。
 
-```yaml
-services:
-  topic2md:
-    build: .
-    ports: ['3000:3000']
-    environment:
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
-    volumes:
-      - ./out:/app/out
-```
+**完整部署指南**（服务器选型、API key 预算、反向代理 + TLS、持久化卷、安全硬化）见 [`docs/deployment.md`](./docs/deployment.md)。
 
 ## 与 md2wechat 集成（可选）
 
@@ -228,6 +216,8 @@ services:
 - `p0-blocker` / `p1-important` / `p2-later` 标优先级
 - `area/web` / `area/core` / `area/plugin` / `area/cli` / `area/infra` 标区域
 - 提新需求或 bug 请直接开 issue，PR 里用 `Closes #N` 关联
+
+版本发布与改动记录见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 ## 贡献 / 安全问题
 
