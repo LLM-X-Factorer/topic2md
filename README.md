@@ -21,7 +21,7 @@
 - **核心编排**：Mastra workflow，TS 原生。
 - **模型网关**：OpenRouter，Web UI 下拉切换 Claude / GPT / Gemini / DeepSeek。
 - **外部耦合一律插件化**：研究源、图片源、主题、发布目的地都通过根目录 `plugins.config.ts` 注入。
-- **真实配图**：走 og:image / 正文截图（Playwright），保留来源链接。
+- **真实配图 + 相关性闸门**：og:image / 正文截图（Playwright）抓候选，CLIP 图文相似度（jina-clip-v2 on Replicate，可选）+ vision LLM 双重审核，没合适的就留空。
 - **观测**：Langfuse，可选。
 
 ## 快速开始
@@ -161,6 +161,7 @@ export default {
 | `TAVILY_API_KEY`      | ✅   | 启用 `@topic2md/source-tavily` 时必需          |
 | `DEFAULT_MODEL`       | ⛔   | 默认 `openrouter/anthropic/claude-sonnet-4-6`  |
 | `PERPLEXITY_API_KEY`  | ⛔   | 启用 Perplexity 插件时需要                     |
+| `REPLICATE_API_TOKEN` | ⛔   | 启用 CLIP 配图相关性闸门（推荐），无则自动 bypass |
 | `LANGFUSE_PUBLIC_KEY` | ⛔   | 启用 Langfuse 观测时需要（与 SECRET 一并设置） |
 | `LANGFUSE_SECRET_KEY` | ⛔   | 同上                                           |
 | `LANGFUSE_HOST`       | ⛔   | 自托管 Langfuse 时指定                         |

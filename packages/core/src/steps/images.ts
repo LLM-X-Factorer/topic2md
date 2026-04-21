@@ -1,3 +1,4 @@
+import { appendFile } from 'node:fs/promises';
 import { createStep } from '@mastra/core';
 import { z } from 'zod';
 import type {
@@ -82,25 +83,41 @@ export async function resolveSectionImage(
   const filtered = filterAndDedupe(candidates);
   if (filtered.length === 0) return section;
 
-  const bounded = filtered.slice(0, MAX_CANDIDATES_PER_SECTION);
+  const gated = await clipGate(filtered, section, emit, signal);
+  if (gated.length === 0) {
+    log(emit, 'info', `section "${section.id}" left without image (CLIP gate rejected all candidates)`);
+    return section;
+  }
+  const bounded = gated.slice(0, MAX_CANDIDATES_PER_SECTION);
 
   let winner: ImageCandidate | null = null;
+  let visionRejected = false;
   if (rerankModel) {
-    winner = await visionRerank(bounded, section, topic, llm, rerankModel, emit, signal).catch(
-      (err) => {
-        log(
-          emit,
-          'warn',
-          `vision rerank failed for "${section.id}": ${err instanceof Error ? err.message : String(err)} — falling back to keyword scoring`,
-        );
-        return null;
-      },
-    );
+    try {
+      winner = await visionRerank(bounded, section, topic, llm, rerankModel, emit, signal);
+      if (!winner) visionRejected = true;
+    } catch (err) {
+      log(
+        emit,
+        'warn',
+        `vision rerank failed for "${section.id}": ${err instanceof Error ? err.message : String(err)} — falling back to keyword scoring`,
+      );
+    }
   }
-  if (!winner) {
+  // Only fall back to keyword scoring when vision actually errored (or was
+  // disabled). A deliberate "-1 / no good candidate" from vision must be
+  // respected — otherwise the "宁缺毋滥" instruction in the prompt is a lie.
+  if (!winner && !visionRejected) {
     winner = keywordRerank(bounded, section);
   }
-  if (!winner) return section;
+  await logCandidatePool(section, topic, bounded, winner, emit);
+
+  if (!winner) {
+    if (visionRejected) {
+      log(emit, 'info', `section "${section.id}" left without image (vision rejected all candidates)`);
+    }
+    return section;
+  }
 
   const ref: ImageRef = {
     url: winner.url,
@@ -250,9 +267,21 @@ function keywordRerank(
   if (candidates.length === 0) return null;
   const keywords = sectionKeywords(section);
   const scored = candidates
-    .map((c) => ({ c, score: scoreCandidate(c, keywords) }))
+    .map((c) => ({ c, hits: countKeywordHits(c, keywords), score: scoreCandidate(c, keywords) }))
     .sort((a, b) => b.score - a.score);
-  return scored[0]?.c ?? null;
+  const top = scored[0];
+  // Without a single keyword anywhere in alt/caption/context the "score" is
+  // just noise from `kind === 'inline'` + having alt text. Better no image.
+  if (!top || top.hits === 0) return null;
+  return top.c;
+}
+
+function countKeywordHits(c: ImageCandidate, keywords: string[]): number {
+  if (keywords.length === 0) return 0;
+  const hay = `${c.alt ?? ''} ${c.caption ?? ''} ${c.surroundingText ?? ''}`.toLowerCase();
+  let n = 0;
+  for (const k of keywords) if (hay.includes(k)) n++;
+  return n;
 }
 
 function sectionKeywords(
@@ -359,4 +388,169 @@ const PLACEHOLDER_PATTERNS: RegExp[] = [
 
 function isPlaceholderUrl(url: string): boolean {
   return PLACEHOLDER_PATTERNS.some((re) => re.test(url));
+}
+
+// Pre-vision pool filter: embed section query + each candidate image via
+// jina-clip-v2 on Replicate, drop anything below cos-sim threshold. Calibrated
+// on 68 labeled candidates: AUC 0.85, threshold 0.30 → recall 0.97, kills
+// ~60% of irrelevant images. Off by default unless REPLICATE_API_TOKEN is set;
+// set CLIP_GATE=disabled to force-off, or CLIP_GATE_THRESHOLD=<float> to retune.
+const CLIP_MODEL_VERSION =
+  '5050c3108bab23981802011a3c76ee327cc0dbfdd31a2f4ef1ee8ef0d3f0b448';
+const CLIP_DEFAULT_THRESHOLD = 0.3;
+
+async function clipGate(
+  candidates: ImageCandidate[],
+  section: SectionContent,
+  emit: EmitFn,
+  signal?: AbortSignal,
+): Promise<ImageCandidate[]> {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token || process.env.CLIP_GATE === 'disabled') return candidates;
+  const threshold = Number(process.env.CLIP_GATE_THRESHOLD ?? CLIP_DEFAULT_THRESHOLD);
+  if (!Number.isFinite(threshold)) return candidates;
+
+  const query = sectionQueryText(section);
+  try {
+    const [qEmb, ...imgEmbsRaw] = await Promise.all([
+      clipEmbed({ text: query }, token, signal),
+      ...candidates.map((c) =>
+        clipEmbed({ image: c.url }, token, signal).catch((err) => {
+          log(
+            emit,
+            'warn',
+            `CLIP embed failed for ${c.url}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return null;
+        }),
+      ),
+    ]);
+    const scored = candidates.map((c, i) => {
+      const e = imgEmbsRaw[i];
+      return { c, score: e ? cosSim(qEmb, e) : null };
+    });
+    const kept = scored
+      .filter((s): s is { c: ImageCandidate; score: number } => s.score != null && s.score >= threshold)
+      .sort((a, b) => b.score - a.score);
+
+    const scoreStr = scored
+      .map((s) => (s.score == null ? 'err' : s.score.toFixed(2)))
+      .join(',');
+    log(
+      emit,
+      'info',
+      `CLIP gate "${section.id}": kept ${kept.length}/${candidates.length} @ ≥${threshold} [${scoreStr}]`,
+    );
+    return kept.map((s) => s.c);
+  } catch (err) {
+    log(
+      emit,
+      'warn',
+      `CLIP gate failed for "${section.id}": ${err instanceof Error ? err.message : String(err)} — skipping filter`,
+    );
+    return candidates;
+  }
+}
+
+async function clipEmbed(
+  input: { text?: string; image?: string },
+  token: string,
+  signal?: AbortSignal,
+): Promise<number[]> {
+  const authHeaders = { Authorization: `Token ${token}`, 'Content-Type': 'application/json' };
+  const res = await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    signal,
+    headers: { ...authHeaders, Prefer: 'wait=60' },
+    body: JSON.stringify({ version: CLIP_MODEL_VERSION, input }),
+  });
+  if (!res.ok) throw new Error(`replicate HTTP ${res.status}`);
+  let body = (await res.json()) as {
+    status: string;
+    output?: string[];
+    error?: string;
+    urls?: { get?: string };
+  };
+  // Cold-start on the model side: Prefer: wait=60 may time out in "starting"
+  // or "processing". Poll the prediction URL until it terminates.
+  const pollUrl = body.urls?.get;
+  const deadline = Date.now() + 240_000; // 4 min total
+  while ((body.status === 'starting' || body.status === 'processing') && pollUrl) {
+    if (Date.now() > deadline) throw new Error(`replicate poll timeout (last status=${body.status})`);
+    await new Promise((r) => setTimeout(r, 2000));
+    const pollRes = await fetch(pollUrl, { headers: authHeaders, signal });
+    if (!pollRes.ok) throw new Error(`replicate poll HTTP ${pollRes.status}`);
+    body = (await pollRes.json()) as typeof body;
+  }
+  if (body.status !== 'succeeded') {
+    throw new Error(`replicate status=${body.status} error=${body.error ?? '?'}`);
+  }
+  const first = body.output?.[0];
+  if (!first) throw new Error('replicate: empty output');
+  const buf = Buffer.from(first, 'base64');
+  return Array.from(new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4));
+}
+
+function cosSim(a: number[], b: number[]): number {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const ai = a[i] ?? 0;
+    const bi = b[i] ?? 0;
+    dot += ai * bi;
+    na += ai * ai;
+    nb += bi * bi;
+  }
+  return na === 0 || nb === 0 ? 0 : dot / Math.sqrt(na * nb);
+}
+
+function sectionQueryText(section: SectionContent): string {
+  const bits: string[] = [section.title];
+  if (section.imageHint?.purpose) bits.push(section.imageHint.purpose);
+  if (section.imageHint?.keywords?.length) bits.push(section.imageHint.keywords.join(', '));
+  if (section.points.length) bits.push(section.points.slice(0, 4).join('; '));
+  return bits.join(' | ');
+}
+
+// Best-effort JSONL dump for offline CLIP-threshold calibration. Gated by
+// IMAGE_CANDIDATE_LOG=<path>; writes one record per section with the full
+// bounded candidate pool + which URL won. Silent no-op when env unset.
+async function logCandidatePool(
+  section: SectionContent,
+  topic: string,
+  candidates: ImageCandidate[],
+  winner: ImageCandidate | null,
+  emit: EmitFn,
+): Promise<void> {
+  const path = process.env.IMAGE_CANDIDATE_LOG;
+  if (!path) return;
+  const record = {
+    at: new Date().toISOString(),
+    topic,
+    sectionId: section.id,
+    sectionTitle: section.title,
+    points: section.points,
+    imageHint: section.imageHint ?? null,
+    candidates: candidates.map((c) => ({
+      url: c.url,
+      alt: c.alt ?? null,
+      caption: c.caption ?? null,
+      surroundingText: c.surroundingText ?? null,
+      sourceUrl: c.sourceUrl ?? null,
+      pluginName: c.pluginName ?? null,
+      kind: c.kind,
+    })),
+    winnerUrl: winner?.url ?? null,
+  };
+  try {
+    await appendFile(path, JSON.stringify(record) + '\n', 'utf8');
+  } catch (err) {
+    log(
+      emit,
+      'warn',
+      `candidate pool log append failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }

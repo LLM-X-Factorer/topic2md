@@ -15,7 +15,7 @@
 1. `research` — **所有** SourcePlugin 并行跑（Promise.allSettled），merge + URL dedupe + cross-source score boost
 2. `outline` — LLM 产出 title/digest/sections[]（`generateObject` + `OutlineSchema`）。**首次失败会重试 1 次**；sections 都会 backfill imageHint（LLM 省略就用 title/points 兜底）
 3. `sections` — 每段并行生成；**每段 attempt + retry**，两次都失败用 outline.points 渲染成 bullet list 兜底（不留空白）
-4. `images` — core 按 section 关键词亲和度 + 去重分配 source，交给 ImagePlugin 抓图；后处理做 URL dedupe + shareicon 黑名单
+4. `images` — 每段走 4 级漏斗，每级都允许"不配图"（详见下面"图片流水线"）
 5. `assemble` — 组装 frontmatter + 正文 + 引用列表（纯函数，`markdown.ts`）。ThemePlugin 在这一步装饰 frontmatter
 6. `publish` — PublishPlugin 落盘 / 发布
 
@@ -26,6 +26,31 @@
 每次 `runTopic2md` 默认写 SQLite（`DATABASE_URL=sqlite:<repo>/data.db`，anchored in `plugins.config.ts`）：`runs` 表存一条元数据，`run_stages` 存每步 Mastra output。CLI 读这个库提供 `list` / `show` / `regen` 子命令。`regenSection` 基于存的 research+outline+sections 只重跑一节 + 重 assemble + 重 publish，新 run 带 `source_run_id` 指回原始。
 
 `runs` 表靠 `ensureRunsColumn` 做 idempotent 的 `ALTER TABLE ADD COLUMN` 迁移；要加新列就在 `openDatabase` 末尾补一行调用，别改已有 `CREATE TABLE` DDL（老库存在、会被跳过）。
+
+## 图片流水线（step 4）
+
+每段 4 级漏斗（`packages/core/src/steps/images.ts`），任一级返回空都接受，section 留空（"宁缺毋滥"是产品底线，别把它优化掉）：
+
+1. **收集 + URL dedupe + 黑名单**（`collectCandidates` → `filterAndDedupe` + `PLACEHOLDER_PATTERNS`）。所有 ImagePlugin 并行抓候选，URL 去重 + 占位符正则踢掉（shareicon / og-default / footer 等）。
+2. **CLIP gate**（可选，`clipGate`）— `zsxkib/jina-clip-v2` on Replicate，把 section title + imageHint + 前 4 个 point 拼成 query，跟每张图算 cos，< 阈值砍掉。阈值 0.30 是在 68 条人工标注上 ROC 出来的（AUC 0.85、recall 0.97、砍 60% irrelevant）。**需要 `REPLICATE_API_TOKEN`；无则自动 bypass**。开关：`CLIP_GATE=disabled` 关；`CLIP_GATE_THRESHOLD=<float>` 改阈值。cold-start 首次 +~80s，轮询最长等 4 分钟。
+3. **Vision rerank**（`visionRerank`，qwen3-vl-32b）— 看图 + 文选一。LLM 返回 pickIndex=-1 明确拒绝时 **不走 keyword fallback**，section 留空（`visionRejected` 路径）。vision 调用**抛错**（403/超时）才降级到 keyword。
+4. **keywordRerank** — 只在 vision 调用失败或 `IMAGE_RERANK_MODEL=disabled` 时兜底，要求至少 1 个关键词在 alt/caption/context 命中，否则返回 null。
+
+**Retune CLIP 阈值**的流程（`scripts/` 下的三件套）：
+
+```bash
+# 1. dump 候选池（平常关，调研时开）
+IMAGE_CANDIDATE_LOG=out/debug/candidates.jsonl pnpm topic2md "...话题 A..."
+IMAGE_CANDIDATE_LOG=out/debug/candidates.jsonl pnpm topic2md "...话题 B..."
+# 2. 标注（本地 HTTP 7070，Y/N/Skip 直至标完）
+node scripts/label-candidates.mjs
+# 3. Replicate 批量 embed（断点续跑）
+REPLICATE_API_TOKEN=... node scripts/embed-candidates.mjs
+# 4. ROC + 阈值建议
+node scripts/analyze-roc.mjs
+```
+
+候选池**不**持久化到 SQLite，只在 `IMAGE_CANDIDATE_LOG` 被设置时 append JSONL；跟 run 没有 1:1 关系，纯离线调研用。
 
 ## 调研背景（background）
 
@@ -58,7 +83,7 @@ pnpm topic2md "话题" [--model <id>]   # CLI 端到端
 pnpm --filter @topic2md/web dev      # 起 http://localhost:3000
 ```
 
-环境变量在 `.env`（gitignored）。必填 `OPENROUTER_API_KEY` + `TAVILY_API_KEY` + `DEFAULT_MODEL`。
+环境变量在 `.env`（gitignored）。必填 `OPENROUTER_API_KEY` + `TAVILY_API_KEY` + `DEFAULT_MODEL`；`REPLICATE_API_TOKEN` 启用 CLIP gate（可选但强烈推荐）；`CLIP_GATE` / `CLIP_GATE_THRESHOLD` / `IMAGE_CANDIDATE_LOG` 调整/调研 CLIP gate 用。
 
 ## 输出路径
 
