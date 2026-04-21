@@ -13,6 +13,7 @@ import type {
   ResearchOutput,
   SectionsOutput,
 } from './steps/schemas.js';
+import { warmClipModel } from './clip.js';
 import { createLLM, type LLM } from './llm.js';
 import { noopEmit, type EmitFn } from './logger.js';
 import { toArticle } from './markdown.js';
@@ -137,6 +138,7 @@ export async function regenSection(
     };
     if (db && newRunId) saveStage(db, newRunId, 'sections', sectionsOutput);
 
+    void warmClipModel(emit, options.signal);
     const imagesOutput = await rerunImages(
       sectionsOutput,
       images,
@@ -144,6 +146,7 @@ export async function regenSection(
       llm,
       emit,
       options.signal,
+      db ?? undefined,
     );
     if (db && newRunId) saveStage(db, newRunId, 'images', imagesOutput);
 
@@ -225,6 +228,7 @@ async function rerunImages(
   llm: LLM,
   emit: EmitFn,
   signal: AbortSignal | undefined,
+  db?: DatabaseType,
 ): Promise<ImagesOutput> {
   const plugs = imagePlugins(plugins);
   if (plugs.length === 0) {
@@ -244,6 +248,7 @@ async function rerunImages(
         rerankModel,
         emit,
         signal,
+        db,
       ),
     ),
   );

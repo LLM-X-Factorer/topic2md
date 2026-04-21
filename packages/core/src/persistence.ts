@@ -25,6 +25,13 @@ const MIGRATIONS: string[] = [
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
   )`,
   `CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS image_embeddings (
+    url TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (url, model_version)
+  )`,
 ];
 
 const DEFAULT_URL = 'sqlite:./data.db';
@@ -200,4 +207,27 @@ function rowToRun(row: RunRow): RunRecord {
 
 function isWorkflowStep(s: string): s is WorkflowStep {
   return (WORKFLOW_STEPS as readonly string[]).includes(s);
+}
+
+export function getImageEmbedding(
+  db: DatabaseType,
+  url: string,
+  modelVersion: string,
+): Buffer | null {
+  const row = db
+    .prepare(`SELECT embedding FROM image_embeddings WHERE url = ? AND model_version = ?`)
+    .get(url, modelVersion) as { embedding: Buffer } | undefined;
+  return row?.embedding ?? null;
+}
+
+export function putImageEmbedding(
+  db: DatabaseType,
+  url: string,
+  modelVersion: string,
+  embedding: Buffer,
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO image_embeddings(url, model_version, embedding, created_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(url, modelVersion, embedding, Date.now());
 }

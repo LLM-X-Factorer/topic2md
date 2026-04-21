@@ -3,12 +3,15 @@ import type { PluginConfig } from '@topic2md/shared';
 import type { LLM } from './llm.js';
 import type { EmitFn } from './logger.js';
 import { noopEmit } from './logger.js';
+import type { DatabaseType } from './persistence.js';
 
 export interface Topic2mdRuntime {
   plugins: PluginConfig;
   llm: LLM;
   emit: EmitFn;
   model: string;
+  /** Optional SQLite handle — enables cross-run caches (e.g. CLIP image embeddings). */
+  db?: DatabaseType;
 }
 
 export const RUNTIME_KEY = 'topic2md' as const;

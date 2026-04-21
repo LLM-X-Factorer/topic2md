@@ -8,10 +8,19 @@ import type {
   SectionContent,
   Source,
 } from '@topic2md/shared';
+import {
+  CLIP_DEFAULT_THRESHOLD,
+  CLIP_MODEL_VERSION,
+  bufferToEmbedding,
+  clipEmbed,
+  cosSim,
+  embeddingToBuffer,
+} from '../clip.js';
 import { getRuntime } from '../context.js';
 import { imagePlugins } from '../registry.js';
 import { log, progress, stepEnd, stepError, stepStart, type EmitFn } from '../logger.js';
 import type { LLM } from '../llm.js';
+import { getImageEmbedding, putImageEmbedding, type DatabaseType } from '../persistence.js';
 import { ImagesOutputSchema, SectionsOutputSchema } from './schemas.js';
 
 // Qwen3-VL-32B is cheap ($0.1/M in) and — critically — not blocked by the
@@ -27,7 +36,7 @@ export const imagesStep = createStep({
   inputSchema: SectionsOutputSchema,
   outputSchema: ImagesOutputSchema,
   execute: async ({ inputData, runtimeContext, abortSignal }) => {
-    const { plugins, emit, llm } = getRuntime(runtimeContext);
+    const { plugins, emit, llm, db } = getRuntime(runtimeContext);
     const started = stepStart(emit, 'images');
     try {
       const plugs = imagePlugins(plugins);
@@ -52,6 +61,7 @@ export const imagesStep = createStep({
             rerankModel,
             emit,
             abortSignal,
+            db,
           ),
         ),
       );
@@ -76,6 +86,7 @@ export async function resolveSectionImage(
   rerankModel: string | null,
   emit: EmitFn,
   signal?: AbortSignal,
+  db?: DatabaseType,
 ): Promise<SectionContent> {
   if (!section.imageHint) return section;
 
@@ -83,9 +94,13 @@ export async function resolveSectionImage(
   const filtered = filterAndDedupe(candidates);
   if (filtered.length === 0) return section;
 
-  const gated = await clipGate(filtered, section, emit, signal);
+  const gated = await clipGate(filtered, section, emit, signal, db);
   if (gated.length === 0) {
-    log(emit, 'info', `section "${section.id}" left without image (CLIP gate rejected all candidates)`);
+    log(
+      emit,
+      'info',
+      `section "${section.id}" left without image (CLIP gate rejected all candidates)`,
+    );
     return section;
   }
   const bounded = gated.slice(0, MAX_CANDIDATES_PER_SECTION);
@@ -114,7 +129,11 @@ export async function resolveSectionImage(
 
   if (!winner) {
     if (visionRejected) {
-      log(emit, 'info', `section "${section.id}" left without image (vision rejected all candidates)`);
+      log(
+        emit,
+        'info',
+        `section "${section.id}" left without image (vision rejected all candidates)`,
+      );
     }
     return section;
   }
@@ -124,7 +143,7 @@ export async function resolveSectionImage(
     alt: winner.alt || section.title,
     kind: winner.kind,
     ...(winner.sourceUrl ? { sourceUrl: winner.sourceUrl } : {}),
-    ...(winner.caption ?? section.imageHint?.purpose
+    ...((winner.caption ?? section.imageHint?.purpose)
       ? { caption: winner.caption ?? section.imageHint?.purpose }
       : {}),
     ...(winner.width ? { width: winner.width } : {}),
@@ -395,15 +414,12 @@ function isPlaceholderUrl(url: string): boolean {
 // on 68 labeled candidates: AUC 0.85, threshold 0.30 → recall 0.97, kills
 // ~60% of irrelevant images. Off by default unless REPLICATE_API_TOKEN is set;
 // set CLIP_GATE=disabled to force-off, or CLIP_GATE_THRESHOLD=<float> to retune.
-const CLIP_MODEL_VERSION =
-  '5050c3108bab23981802011a3c76ee327cc0dbfdd31a2f4ef1ee8ef0d3f0b448';
-const CLIP_DEFAULT_THRESHOLD = 0.3;
-
 async function clipGate(
   candidates: ImageCandidate[],
   section: SectionContent,
   emit: EmitFn,
   signal?: AbortSignal,
+  db?: DatabaseType,
 ): Promise<ImageCandidate[]> {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token || process.env.CLIP_GATE === 'disabled') return candidates;
@@ -412,34 +428,56 @@ async function clipGate(
 
   const query = sectionQueryText(section);
   try {
+    let cacheHits = 0;
     const [qEmb, ...imgEmbsRaw] = await Promise.all([
       clipEmbed({ text: query }, token, signal),
-      ...candidates.map((c) =>
-        clipEmbed({ image: c.url }, token, signal).catch((err) => {
+      ...candidates.map(async (c) => {
+        if (db) {
+          const cached = getImageEmbedding(db, c.url, CLIP_MODEL_VERSION);
+          if (cached) {
+            cacheHits++;
+            return bufferToEmbedding(cached);
+          }
+        }
+        try {
+          const emb = await clipEmbed({ image: c.url }, token, signal);
+          if (db) {
+            try {
+              putImageEmbedding(db, c.url, CLIP_MODEL_VERSION, embeddingToBuffer(emb));
+            } catch {
+              /* cache write is best-effort */
+            }
+          }
+          return emb;
+        } catch (err) {
           log(
             emit,
             'warn',
             `CLIP embed failed for ${c.url}: ${err instanceof Error ? err.message : String(err)}`,
           );
           return null;
-        }),
-      ),
+        }
+      }),
     ]);
     const scored = candidates.map((c, i) => {
       const e = imgEmbsRaw[i];
-      return { c, score: e ? cosSim(qEmb, e) : null };
+      if (!e) return { c, raw: null, score: null };
+      const raw = cosSim(qEmb, e);
+      return { c, raw, score: raw * altQualityPenalty(c) };
     });
     const kept = scored
-      .filter((s): s is { c: ImageCandidate; score: number } => s.score != null && s.score >= threshold)
+      .filter(
+        (s): s is { c: ImageCandidate; raw: number; score: number } =>
+          s.score != null && s.score >= threshold,
+      )
       .sort((a, b) => b.score - a.score);
 
-    const scoreStr = scored
-      .map((s) => (s.score == null ? 'err' : s.score.toFixed(2)))
-      .join(',');
+    const scoreStr = scored.map((s) => (s.score == null ? 'err' : s.score.toFixed(2))).join(',');
+    const cacheNote = db ? ` (cache ${cacheHits}/${candidates.length})` : '';
     log(
       emit,
       'info',
-      `CLIP gate "${section.id}": kept ${kept.length}/${candidates.length} @ ≥${threshold} [${scoreStr}]`,
+      `CLIP gate "${section.id}": kept ${kept.length}/${candidates.length} @ ≥${threshold}${cacheNote} [${scoreStr}]`,
     );
     return kept.map((s) => s.c);
   } catch (err) {
@@ -452,58 +490,17 @@ async function clipGate(
   }
 }
 
-async function clipEmbed(
-  input: { text?: string; image?: string },
-  token: string,
-  signal?: AbortSignal,
-): Promise<number[]> {
-  const authHeaders = { Authorization: `Token ${token}`, 'Content-Type': 'application/json' };
-  const res = await fetch('https://api.replicate.com/v1/predictions', {
-    method: 'POST',
-    signal,
-    headers: { ...authHeaders, Prefer: 'wait=60' },
-    body: JSON.stringify({ version: CLIP_MODEL_VERSION, input }),
-  });
-  if (!res.ok) throw new Error(`replicate HTTP ${res.status}`);
-  let body = (await res.json()) as {
-    status: string;
-    output?: string[];
-    error?: string;
-    urls?: { get?: string };
-  };
-  // Cold-start on the model side: Prefer: wait=60 may time out in "starting"
-  // or "processing". Poll the prediction URL until it terminates.
-  const pollUrl = body.urls?.get;
-  const deadline = Date.now() + 240_000; // 4 min total
-  while ((body.status === 'starting' || body.status === 'processing') && pollUrl) {
-    if (Date.now() > deadline) throw new Error(`replicate poll timeout (last status=${body.status})`);
-    await new Promise((r) => setTimeout(r, 2000));
-    const pollRes = await fetch(pollUrl, { headers: authHeaders, signal });
-    if (!pollRes.ok) throw new Error(`replicate poll HTTP ${pollRes.status}`);
-    body = (await pollRes.json()) as typeof body;
-  }
-  if (body.status !== 'succeeded') {
-    throw new Error(`replicate status=${body.status} error=${body.error ?? '?'}`);
-  }
-  const first = body.output?.[0];
-  if (!first) throw new Error('replicate: empty output');
-  const buf = Buffer.from(first, 'base64');
-  return Array.from(new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4));
-}
-
-function cosSim(a: number[], b: number[]): number {
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    const ai = a[i] ?? 0;
-    const bi = b[i] ?? 0;
-    dot += ai * bi;
-    na += ai * ai;
-    nb += bi * bi;
-  }
-  return na === 0 || nb === 0 ? 0 : dot / Math.sqrt(na * nb);
+// Soft multiplier applied to raw CLIP cosine before the threshold check. Low
+// signal ⇒ lower effective score. Calibrated loosely — generic alt, CMS dump
+// paths — so the gate gets stricter on weak-metadata candidates without a
+// hard blacklist. See issue #28.
+function altQualityPenalty(c: ImageCandidate): number {
+  let mult = 1;
+  const alt = (c.alt ?? '').trim();
+  if (alt === '' || /^(image|img|picture|photo)\b/i.test(alt)) mult *= 0.85;
+  else if (alt.length < 10) mult *= 0.9;
+  if (/\/resource\/upload\/\d{6,8}\//i.test(c.url)) mult *= 0.9;
+  return mult;
 }
 
 function sectionQueryText(section: SectionContent): string {

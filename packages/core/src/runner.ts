@@ -6,6 +6,7 @@ import {
   type WorkflowResult,
   type WorkflowStep,
 } from '@topic2md/shared';
+import { warmClipModel } from './clip.js';
 import { buildRuntime, RUNTIME_KEY } from './context.js';
 import { createLLM, type LLM } from './llm.js';
 import type { EmitFn } from './logger.js';
@@ -65,7 +66,14 @@ export async function runTopic2md(
   const run = await workflow.createRunAsync();
 
   const runtimeContext = new RuntimeContext();
-  runtimeContext.set(RUNTIME_KEY, buildRuntime({ plugins: options.plugins, llm, emit, model }));
+  runtimeContext.set(
+    RUNTIME_KEY,
+    buildRuntime({ plugins: options.plugins, llm, emit, model, db: db ?? undefined }),
+  );
+
+  // Fire-and-forget: warm the Replicate CLIP container while research/outline
+  // run. Self-catches errors; no unhandled-rejection leak.
+  void warmClipModel(emit, options.signal);
 
   try {
     const result = await run.start({
