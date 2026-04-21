@@ -155,17 +155,17 @@ export default {
 
 ## 环境变量
 
-| 变量                  | 必需 | 说明                                           |
-| --------------------- | ---- | ---------------------------------------------- |
-| `OPENROUTER_API_KEY`  | ✅   | 模型网关；也可以注入自定义 LLM 绕过            |
-| `TAVILY_API_KEY`      | ✅   | 启用 `@topic2md/source-tavily` 时必需          |
-| `DEFAULT_MODEL`       | ⛔   | 默认 `openrouter/anthropic/claude-sonnet-4-6`  |
-| `PERPLEXITY_API_KEY`  | ⛔   | 启用 Perplexity 插件时需要                     |
+| 变量                  | 必需 | 说明                                              |
+| --------------------- | ---- | ------------------------------------------------- |
+| `OPENROUTER_API_KEY`  | ✅   | 模型网关；也可以注入自定义 LLM 绕过               |
+| `TAVILY_API_KEY`      | ✅   | 启用 `@topic2md/source-tavily` 时必需             |
+| `DEFAULT_MODEL`       | ⛔   | 默认 `openrouter/anthropic/claude-sonnet-4-6`     |
+| `PERPLEXITY_API_KEY`  | ⛔   | 启用 Perplexity 插件时需要                        |
 | `REPLICATE_API_TOKEN` | ⛔   | 启用 CLIP 配图相关性闸门（推荐），无则自动 bypass |
-| `LANGFUSE_PUBLIC_KEY` | ⛔   | 启用 Langfuse 观测时需要（与 SECRET 一并设置） |
-| `LANGFUSE_SECRET_KEY` | ⛔   | 同上                                           |
-| `LANGFUSE_HOST`       | ⛔   | 自托管 Langfuse 时指定                         |
-| `DATABASE_URL`        | ⛔   | 默认 `sqlite:./data.db`                        |
+| `LANGFUSE_PUBLIC_KEY` | ⛔   | 启用 Langfuse 观测时需要（与 SECRET 一并设置）    |
+| `LANGFUSE_SECRET_KEY` | ⛔   | 同上                                              |
+| `LANGFUSE_HOST`       | ⛔   | 自托管 Langfuse 时指定                            |
+| `DATABASE_URL`        | ⛔   | 默认 `sqlite:./data.db`                           |
 
 ## Langfuse 观测
 
