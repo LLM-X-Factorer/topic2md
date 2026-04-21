@@ -21,7 +21,7 @@
 - **核心编排**：Mastra workflow，TS 原生。
 - **模型网关**：OpenRouter，Web UI 下拉切换 Claude / GPT / Gemini / DeepSeek。
 - **外部耦合一律插件化**：研究源、图片源、主题、发布目的地都通过根目录 `plugins.config.ts` 注入。
-- **真实配图 + 相关性闸门**：og:image / 正文截图（Playwright）抓候选，CLIP 图文相似度（jina-clip-v2 on Replicate，可选）+ vision LLM 双重审核，没合适的就留空。
+- **真实配图 + 相关性闸门**：og:image / 正文截图（Playwright）抓候选，CLIP 图文相似度（jina-clip-v2 on Replicate，可选，SQLite 缓存 embedding 跨 run 复用）+ alt 质量软惩罚 + vision LLM 双重审核，没合适的就留空。
 - **观测**：Langfuse，可选。
 
 ## 快速开始
@@ -50,6 +50,14 @@ pnpm --filter @topic2md/web dev               # 起 Web UI (http://localhost:300
 ```
 
 产物统一写到仓库根目录 `out/`（`plugins.config.ts` 用 `import.meta.url` 锚定），CLI 和 Web 入口产出同一处。
+
+想拿去给业务/非技术同事看：
+
+```bash
+node scripts/mkpdf.mjs out/2026-04-21-xxx.md     # 同名 .pdf 产出到 out/
+```
+
+Chromium headless 印刷，中文用 macOS 系统 PingFang SC，跨 Preview / Adobe / 微信等阅读器兼容。远程图会先下载到 `out/_pdf_assets/` 再嵌入，离线也能重印。
 
 ### 调研背景（`--background`）
 

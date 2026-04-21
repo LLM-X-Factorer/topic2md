@@ -32,7 +32,10 @@
 每段 4 级漏斗（`packages/core/src/steps/images.ts`），任一级返回空都接受，section 留空（"宁缺毋滥"是产品底线，别把它优化掉）：
 
 1. **收集 + URL dedupe + 黑名单**（`collectCandidates` → `filterAndDedupe` + `PLACEHOLDER_PATTERNS`）。所有 ImagePlugin 并行抓候选，URL 去重 + 占位符正则踢掉（shareicon / og-default / footer 等）。
-2. **CLIP gate**（可选，`clipGate`）— `zsxkib/jina-clip-v2` on Replicate，把 section title + imageHint + 前 4 个 point 拼成 query，跟每张图算 cos，< 阈值砍掉。阈值 0.30 是在 68 条人工标注上 ROC 出来的（AUC 0.85、recall 0.97、砍 60% irrelevant）。**需要 `REPLICATE_API_TOKEN`；无则自动 bypass**。开关：`CLIP_GATE=disabled` 关；`CLIP_GATE_THRESHOLD=<float>` 改阈值。cold-start 首次 +~80s，轮询最长等 4 分钟。
+2. **CLIP gate**（可选，`clipGate`）— `zsxkib/jina-clip-v2` on Replicate，把 section title + imageHint + 前 4 个 point 拼成 query，跟每张图算 cos，< 阈值砍掉。阈值 0.30 是在 68 条人工标注上 ROC 出来的（AUC 0.85、recall 0.97、砍 60% irrelevant）。**需要 `REPLICATE_API_TOKEN`；无则自动 bypass**。开关：`CLIP_GATE=disabled` 关；`CLIP_GATE_THRESHOLD=<float>` 改阈值。
+   - **冷启动**：`runTopic2md` / `regenSection` 入口 fire-and-forget `warmClipModel` 一次 `text: "."` 预热调用（`packages/core/src/clip.ts`），让 Replicate 容器在 research/outline 阶段就开始加载。首次冷启约 80~120s，后续 run 若容器仍活着只需 ~1.5s。失败静默（`log(warn, ...)`）不影响主流水线。
+   - **Embedding 缓存**：`persistence.ts` 的 `image_embeddings(url, model_version, embedding BLOB)` 表做 URL 级缓存。`clipGate` 读取走 `getImageEmbedding` miss 再调 Replicate，成功后 `putImageEmbedding` write-through。跨 run 重复 URL 省 Replicate 调用 + 省 ~$0.005/URL。换 CLIP 模型时 bump `CLIP_MODEL_VERSION`，旧行自动作废。
+   - **Alt 质量惩罚**：`altQualityPenalty` 对原始 cosine 做软乘子（空/generic alt × 0.85；alt < 10 字符 × 0.9；URL 命中 `/resource/upload/<yyyymm(dd)>/` CMS dump × 0.9），乘完再跟阈值比，防止弱 alt 在边界分数上钻空子。
 3. **Vision rerank**（`visionRerank`，qwen3-vl-32b）— 看图 + 文选一。LLM 返回 pickIndex=-1 明确拒绝时 **不走 keyword fallback**，section 留空（`visionRejected` 路径）。vision 调用**抛错**（403/超时）才降级到 keyword。
 4. **keywordRerank** — 只在 vision 调用失败或 `IMAGE_RERANK_MODEL=disabled` 时兜底，要求至少 1 个关键词在 alt/caption/context 命中，否则返回 null。
 
@@ -81,6 +84,7 @@ pnpm build                           # turbo run build across all packages
 pnpm lint / typecheck / format:check # 三把尺子
 pnpm topic2md "话题" [--model <id>]   # CLI 端到端
 pnpm --filter @topic2md/web dev      # 起 http://localhost:3000
+node scripts/mkpdf.mjs out/xxx.md    # MD → PDF（用于给业务方看）
 ```
 
 环境变量在 `.env`（gitignored）。必填 `OPENROUTER_API_KEY` + `TAVILY_API_KEY` + `DEFAULT_MODEL`；`REPLICATE_API_TOKEN` 启用 CLIP gate（可选但强烈推荐）；`CLIP_GATE` / `CLIP_GATE_THRESHOLD` / `IMAGE_CANDIDATE_LOG` 调整/调研 CLIP gate 用。
@@ -88,6 +92,20 @@ pnpm --filter @topic2md/web dev      # 起 http://localhost:3000
 ## 输出路径
 
 `plugins.config.ts` 用 `import.meta.url` 锚定 repo 根，所以无论 CLI 从哪里调用、`next dev` cwd 是 `apps/web`，产物都写到根目录 `out/`。Don't break this — 用户依赖这个行为。
+
+## MD → PDF 导出
+
+`scripts/mkpdf.mjs`（Node + Playwright + pandoc）把任意 `out/*.md` 渲染成同名 `.pdf`：
+
+```bash
+node scripts/mkpdf.mjs out/2026-04-21-xxx.md
+```
+
+- **路径**：MD → pandoc → HTML body → Chromium headless `page.pdf()`。不走 weasyprint，因为 weasyprint 输出的 CID Type 0C subsetted OTF 字体在 macOS Preview 上会渲染成乱码。Chromium 走 Type 3 bitmap 字体嵌入，跨阅读器稳定。
+- **图片本地化**：抓所有 `![](http…)` 远程 URL 下载到 `out/_pdf_assets/<sha1>.png`，MD 原地改写成 `file://` 绝对路径。离线可重印，且 pandoc 的 HTTP client 有时挑 TLS 这条路绕过了。
+- **字体**：CSS 里 `font-family: "PingFang SC", "Hiragino Sans GB", "Songti SC"`，macOS 默认字体够用。Linux 上需要自己装中文字体。
+- **Playwright**：作为 root devDependency 挂在根 `package.json`，脚本可以直接 `import { chromium } from 'playwright'`；不要依赖 plugin 包 node_modules 的 playwright，pnpm isolation 会搞不定 ESM 解析。
+- **不要**把 `/tmp` 当配置缓存。之前 CSS 放 `/tmp/pdf-style.css` 被别的进程覆盖（页眉莫名多出一行无关文字），坑了整场调试。样式/脚本一律放 repo 内。
 
 ## 编辑这个项目时的注意
 

@@ -26,6 +26,9 @@ data.db-wal
 *.sqlite-shm
 *.sqlite-wal
 
+# Playwright MCP scratch (screenshots / snapshots from claude-in-chrome / playwright tools)
+.playwright-mcp/
+
 .DS_Store
 Thumbs.db
 
